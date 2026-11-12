@@ -55,10 +55,7 @@ import type {
 } from "../shared/types";
 
 const DEFAULT_SETTINGS: Settings = {
-  recordingsDir: path.join(
-    app.getPath("home"),
-    "Desktop/dev/meeting-scribe/recordings",
-  ),
+  recordingsDir: path.join(app.getPath("home"), "Documents", "Meeting Scribe"),
   language: "he",
   activeModel: "mlx-community/ivrit-ai-whisper-large-v3-turbo-mlx",
   modelMap: { en: "mlx-community/whisper-large-v3-turbo" },
