@@ -36,17 +36,18 @@ import {
   type TranscriptSegment,
 } from "./transcript";
 import {
-  claudeStatus,
-  findClaude,
   generateSummary,
   lintTranscript,
+  type Llm,
 } from "./summarize";
+import { detect, listProviders, selected, status } from "./providers";
 import { DIARIZE_MODEL, modelEngine } from "../shared/types";
 import type {
   FileTrack,
   LintResult,
   LiveSegment,
   MeetingSummary,
+  ProviderTestResult,
   RecordingMeta,
   ScreenSourcesResult,
   Settings,
@@ -65,7 +66,10 @@ const DEFAULT_SETTINGS: Settings = {
   hfToken: "",
   matchThreshold: 0.55,
   claudeBinary: "",
+  provider: "claude",
   summaryModel: "sonnet",
+  codexBinary: "",
+  codexModel: "",
   lintTranscripts: true,
   autoSummarize: true,
   offlineMode: false,
@@ -117,10 +121,22 @@ const sidecarEnv = (s: Settings): Record<string, string> =>
 const sanitizeSpeakers = (list: SpeakerRecord[]): SpeakerInfo[] =>
   list.map(({ cluster, name, matched }) => ({ cluster, name, matched }));
 
-const CLAUDE_MISSING =
-  "Claude Code CLI not found. Install it and sign in (claude.com/claude-code), or set its path in Settings.";
 const OFFLINE_ON =
   "Offline mode is on (Settings) - AI polish and summaries are disabled.";
+
+/** the selected AI provider ready to run, or why it can't be (offline mode is
+ *  checked by the callers first, so it gates every provider the same way) */
+async function activeLlm(
+  s: Settings,
+): Promise<{ llm: Llm } | { error: string }> {
+  const { provider, override, model } = selected(s);
+  const bin = await detect(provider, override);
+  if (!bin)
+    return {
+      error: `${provider.name} CLI not found. Install it and sign in (${provider.installUrl.replace(/^https?:\/\//, "")}), or set its path in Settings.`,
+    };
+  return { llm: { provider, bin, model } };
+}
 
 /** run `fn` with screen context: the caller's, or (when none was passed) one
  *  collected here and cleaned up after. null means transcript-only. */
@@ -144,8 +160,8 @@ async function lintAndSave(
 ): Promise<LintResult> {
   const s = loadSettings();
   if (s.offlineMode) return { error: OFFLINE_ON };
-  const bin = findClaude(s.claudeBinary);
-  if (!bin) return { error: CLAUDE_MISSING };
+  const active = await activeLlm(s);
+  if ("error" in active) return active;
   const metaPath = path.join(dir, "meta.json");
   const meta = await readJson<RecordingMeta>(metaPath);
   const segs = await readJson<TranscriptSegment[]>(
@@ -157,7 +173,7 @@ async function lintAndSave(
     const { segments, changed, failedBatches, totalBatches } = await withScreen(
       dir,
       screen,
-      (sc) => lintTranscript(bin, s.summaryModel || "sonnet", segs, sc),
+      (sc) => lintTranscript(active.llm, segs, sc),
     );
     if (changed) {
       // keep the untouched ASR output around; only the first lint writes it
@@ -189,8 +205,8 @@ async function summarizeAndSave(
 ): Promise<SummaryResult> {
   const s = loadSettings();
   if (s.offlineMode) return { error: OFFLINE_ON };
-  const bin = findClaude(s.claudeBinary);
-  if (!bin) return { error: CLAUDE_MISSING };
+  const active = await activeLlm(s);
+  if ("error" in active) return active;
   const meta = await readJson<RecordingMeta>(path.join(dir, "meta.json"));
   const segs = await readJson<TranscriptSegment[]>(
     path.join(dir, "transcript.json"),
@@ -199,7 +215,7 @@ async function summarizeAndSave(
     return { error: "Transcribe this recording first." };
   try {
     const summary = await withScreen(dir, screen, (sc) =>
-      generateSummary(bin, s.summaryModel || "sonnet", {
+      generateSummary(active.llm, {
         title: meta.title,
         createdAt: meta.createdAt,
         speakers: meta.speakers ?? [],
@@ -229,8 +245,8 @@ async function pruneAudio(dir: string): Promise<boolean> {
   // every stage the user asked for must have landed, or we'd throw away the
   // only input a retry could use
   if (!fs.existsSync(path.join(dir, "transcript.json"))) return false;
-  const claudeReachable = !s.offlineMode && !!findClaude(s.claudeBinary);
-  if (claudeReachable) {
+  const aiReachable = !s.offlineMode && "llm" in (await activeLlm(s));
+  if (aiReachable) {
     if (s.lintTranscripts && !meta.polishedAt) return false;
     if (s.autoSummarize && !fs.existsSync(path.join(dir, "summary.json")))
       return false;
@@ -308,11 +324,11 @@ export function registerIpc(win: BrowserWindow): void {
       win.setTitle(rec ? "● Recording - Meeting Scribe" : "Meeting Scribe");
   };
 
-  // best-effort Claude polish + summary, shared by batch transcribe and live
-  // finalize; a Claude failure must never fail the transcription itself
-  async function claudePost(id: string, recDir: string): Promise<void> {
+  // best-effort AI polish + summary, shared by batch transcribe and live
+  // finalize; a provider failure must never fail the transcription itself
+  async function aiPost(id: string, recDir: string): Promise<void> {
     const after = loadSettings();
-    if (!after.offlineMode && findClaude(after.claudeBinary)) {
+    if (!after.offlineMode && "llm" in (await activeLlm(after))) {
       // screenshots + OCR are extracted once and shared by polish and summary
       const screen =
         after.lintTranscripts || after.autoSummarize
@@ -419,7 +435,7 @@ export function registerIpc(win: BrowserWindow): void {
   }
 
   // full batch transcription of a recording's tracks (plus diarization and
-  // Claude post-processing); the UI follows transcribe:progress
+  // AI post-processing); the UI follows transcribe:progress
   async function runTranscription(
     id: string,
     language?: string,
@@ -494,7 +510,7 @@ export function registerIpc(win: BrowserWindow): void {
       sidecarEnv(s),
     );
     const code = await promise;
-    if (code === 0) await claudePost(id, recDir);
+    if (code === 0) await aiPost(id, recDir);
     return code;
   }
 
@@ -1031,9 +1047,33 @@ export function registerIpc(win: BrowserWindow): void {
     },
   );
 
-  ipcMain.handle("claude:status", () =>
-    claudeStatus(loadSettings().claudeBinary),
+  ipcMain.handle("provider:status", async () => {
+    const { provider, override } = selected(loadSettings());
+    return { name: provider.name, ...(await status(provider, override)) };
+  });
+
+  // refresh=true re-probes PATH and the login shell (after an install, on focus)
+  ipcMain.handle("provider:list", (_e, refresh?: boolean) =>
+    listProviders(loadSettings(), !!refresh),
   );
+
+  // installed is not signed in: send a tiny prompt and report what comes back
+  ipcMain.handle("provider:test", async (): Promise<ProviderTestResult> => {
+    const s = loadSettings();
+    if (s.offlineMode) return { ok: false, error: OFFLINE_ON };
+    const active = await activeLlm(s);
+    if ("error" in active) return { ok: false, error: active.error };
+    try {
+      const { provider, bin, model } = active.llm;
+      const text = await provider.run(bin, "Reply with exactly the word: pong", {
+        model,
+        timeoutMs: 60_000,
+      });
+      return { ok: true, text: text.trim().slice(0, 200) };
+    } catch (e) {
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  });
 
   ipcMain.handle(
     "transcript:lint",

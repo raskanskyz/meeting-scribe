@@ -2,7 +2,9 @@ import { contextBridge, ipcRenderer } from "electron";
 import type {
   AudioSetupStatus,
   CalendarResult,
-  ClaudeStatus,
+  ProviderInfo,
+  ProviderStatus,
+  ProviderTestResult,
   DownloadProgress,
   FileTrack,
   HfValidation,
@@ -126,8 +128,12 @@ const api = {
   getTranscriptSegments: (id: string): Promise<TranscriptSegment[]> =>
     ipcRenderer.invoke("transcript:segments", id),
 
-  claudeStatus: (): Promise<ClaudeStatus> =>
-    ipcRenderer.invoke("claude:status"),
+  providerStatus: (): Promise<ProviderStatus & { name: string }> =>
+    ipcRenderer.invoke("provider:status"),
+  listProviders: (refresh = false): Promise<ProviderInfo[]> =>
+    ipcRenderer.invoke("provider:list", refresh),
+  testProvider: (): Promise<ProviderTestResult> =>
+    ipcRenderer.invoke("provider:test"),
   lintTranscript: (id: string): Promise<LintResult> =>
     ipcRenderer.invoke("transcript:lint", id),
   getSummary: (id: string): Promise<MeetingSummary | null> =>

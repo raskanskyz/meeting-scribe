@@ -12,19 +12,25 @@ export interface Settings {
   hfToken: string;
   /** minimum cosine similarity for a voice to match a saved voiceprint (0–1) */
   matchThreshold: number;
+  /** which AI command-line tool does polish and summaries */
+  provider: ProviderId;
   /** path to the Claude Code CLI ('' auto-detects from PATH and common installs) */
   claudeBinary: string;
   /** model alias passed to `claude --model` for meeting summaries */
   summaryModel: string;
-  /** automatically polish new transcripts with Claude after transcription */
+  /** path to the Codex CLI ('' auto-detects) */
+  codexBinary: string;
+  /** model passed to `codex exec --model` ('' = the Codex login's default) */
+  codexModel: string;
+  /** automatically polish new transcripts with the AI provider after transcription */
   lintTranscripts: boolean;
-  /** automatically generate a summary with Claude after transcription */
+  /** automatically generate a summary with the AI provider after transcription */
   autoSummarize: boolean;
-  /** never touch the network: no Claude polish/summaries, no model downloads,
+  /** never touch the network: no AI polish/summaries, no model downloads,
    *  sidecars forced to HF_HUB_OFFLINE */
   offlineMode: boolean;
   /** opt-in: polish and summaries also get screenshots from screen.webm (and the
-   *  text read from them on-device). Sent to Claude when on; never in offline mode */
+   *  text read from them on-device). Sent to the AI provider when on; never in offline mode */
   screenContext: boolean;
   /** delete the raw track audio once transcript (+ polish/summary, when those
    *  are enabled) is on disk - reclaims space, makes re-transcribing impossible */
@@ -93,13 +99,31 @@ export interface MeetingSummary {
   keyDecisions: string[];
   openQuestions: string[];
   model: string;
+  /** AI tool that wrote it; absent on summaries from before providers = Claude Code */
+  provider?: string;
   generatedAt: string;
 }
 
-export interface ClaudeStatus {
+export type ProviderId = "claude" | "codex";
+
+export interface ProviderStatus {
   available: boolean;
   path?: string;
   reason?: string;
+}
+
+/** a supported AI tool plus whether it was found on this machine */
+export interface ProviderInfo extends ProviderStatus {
+  id: ProviderId;
+  name: string;
+  installUrl: string;
+}
+
+export interface ProviderTestResult {
+  ok: boolean;
+  /** the model's reply to the test prompt */
+  text?: string;
+  error?: string;
 }
 
 export interface SummaryResult {
@@ -112,7 +136,7 @@ export interface LintResult {
   changed?: number;
   polishedAt?: string;
   error?: string;
-  /** batches Claude failed on; corrections from the surviving batches still apply */
+  /** batches the AI provider failed on; corrections from the surviving batches still apply */
   failedBatches?: number;
   totalBatches?: number;
 }
@@ -177,7 +201,7 @@ export interface RecordingMeta {
   invitees?: string[];
   /** 'ok' or the reason speaker identification was skipped */
   diarization?: string;
-  /** ISO timestamp of the last Claude polish pass; absent = never polished */
+  /** ISO timestamp of the last AI polish pass; absent = never polished */
   polishedAt?: string;
   /** ISO timestamp the raw track audio was reclaimed; the tracks are gone and
    *  this recording can never be re-transcribed */

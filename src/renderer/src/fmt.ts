@@ -40,9 +40,9 @@ export function phaseLabel(p: {
     case "merging":
       return "Merging speakers…";
     case "linting":
-      return "Polishing transcript with Claude…";
+      return "Polishing transcript…";
     case "summarizing":
-      return "Generating summary with Claude…";
+      return "Generating summary…";
     default:
       return "";
   }

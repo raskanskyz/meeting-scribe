@@ -14,7 +14,7 @@ import SpeakerTimeline, { type Lane } from "../components/SpeakerTimeline";
 import Transcript from "../components/Transcript";
 import type { AiJobType, AiNotice } from "../aiJobs";
 import type {
-  ClaudeStatus,
+  ProviderStatus,
   MeetingSummary,
   RecordingMeta,
   SpeakerInfo,
@@ -51,7 +51,7 @@ export default function MeetingDetailsView({
   const [segs, setSegs] = useState<TranscriptSegment[] | null>(null);
   const [speakers, setSpeakers] = useState<SpeakerInfo[]>([]);
   const [summary, setSummary] = useState<MeetingSummary | null>(null);
-  const [claude, setClaude] = useState<ClaudeStatus | null>(null);
+  const [ai, setAi] = useState<(ProviderStatus & { name: string }) | null>(null);
   const [showTx, setShowTx] = useState(true);
   const [editTitle, setEditTitle] = useState<string | null>(null);
   const [curTime, setCurTime] = useState(0);
@@ -79,7 +79,7 @@ export default function MeetingDetailsView({
     api.getTranscriptSegments(rec.id).then(setSegs);
     api.getSpeakers(rec.id).then(setSpeakers);
     api.getSummary(rec.id).then(setSummary);
-    api.claudeStatus().then(setClaude);
+    api.providerStatus().then(setAi);
   }, [rec.id, job, progress?.phase]);
 
   // Esc / ⌘[ go back to the library (unless typing in a field)
@@ -341,7 +341,7 @@ export default function MeetingDetailsView({
             )}
             {segs !== null &&
               lanes.length > 0 &&
-              claude?.available &&
+              ai?.available &&
               !generating && (
                 <button className="ghost" onClick={onGenerate} disabled={!!job}>
                   {summary ? "Regenerate" : "Generate summary"}
@@ -353,7 +353,7 @@ export default function MeetingDetailsView({
         {generating && (
           <div>
             <div className="rec-meta" style={{ marginBottom: 6 }}>
-              Reading the transcript with Claude - usually 15–60 seconds…
+              Reading the transcript with {ai?.name ?? "AI"} - usually 15–60 seconds…
             </div>
             <div className="progress indeterminate">
               <div />
@@ -364,11 +364,11 @@ export default function MeetingDetailsView({
 
         {!generating && !summary && !genError && (
           <p className="hint">
-            {claude === null
-              ? "Checking for Claude Code…"
-              : claude.available
-                ? "Generate an executive summary, action items, and key decisions from the transcript. Runs through your locally installed Claude Code using your own subscription - no API key involved."
-                : `${claude.reason}. Install Claude Code and sign in with your subscription to enable AI summaries, or set the binary path in Settings.`}
+            {ai === null
+              ? "Checking for the AI tool…"
+              : ai.available
+                ? `Generate an executive summary, action items, and key decisions from the transcript. Runs through your locally installed ${ai.name} using your own login - no API key involved.`
+                : `${ai.reason}. Install ${ai.name} and sign in to enable AI summaries, pick another tool or set the binary path in Settings.`}
           </p>
         )}
 
@@ -429,7 +429,7 @@ export default function MeetingDetailsView({
             )}
             <div className="sum-meta">
               Generated {new Date(summary.generatedAt).toLocaleString()} ·{" "}
-              {summary.model} · local Claude Code
+              {summary.model} · local {summary.provider ?? "Claude Code"}
             </div>
           </div>
         )}
@@ -450,9 +450,9 @@ export default function MeetingDetailsView({
               )}
             </div>
             <div className="row">
-              {claude?.available && (
+              {ai?.available && (
                 <button className="ghost" onClick={onLint} disabled={!!job}>
-                  {linting ? "Polishing…" : "Polish with Claude"}
+                  {linting ? "Polishing…" : `Polish with ${ai.name}`}
                 </button>
               )}
               {showTx && (
