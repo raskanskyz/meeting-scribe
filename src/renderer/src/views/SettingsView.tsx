@@ -258,14 +258,16 @@ export default function SettingsView({ settings, onChange }: Props) {
               checked={settings.offlineMode}
               onChange={(e) => save({ offlineMode: e.target.checked })}
             />{" "}
-            Offline / private mode - never touch the network
+            Offline mode - nothing leaves this Mac
           </label>
           <p className="hint" style={{ marginTop: 8 }}>
             Disables Claude polish and summaries, blocks model downloads, and
             forces the transcription sidecars fully offline (recording, live
             transcription and speaker identification all run from
-            already-downloaded local models). The green "Runs offline" badge
-            appears only while this is on.
+            already-downloaded local models). Recordings and transcripts are still
+            saved locally; recordings made while this is on get no polish or
+            summary, and you can generate them by hand later. Also available
+            as a toggle at the bottom of the sidebar.
           </p>
           <label
             style={{

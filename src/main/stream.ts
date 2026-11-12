@@ -22,12 +22,13 @@ export class StreamSession {
     modelDir: string,
     language: string,
     onSegment: (s: LiveSegment) => void,
-    onError: (message: string) => void
+    onError: (message: string) => void,
+    extraEnv: Record<string, string> = {}
   ) {
     this.child = spawn(
       uvPath(),
       ['run', '--quiet', sidecarScript('stream.py'), '--model-dir', modelDir, '--language', language],
-      { stdio: ['pipe', 'pipe', 'pipe'], env: pythonSidecarEnv() }
+      { stdio: ['pipe', 'pipe', 'pipe'], env: pythonSidecarEnv(extraEnv) }
     )
 
     let markReady: () => void = () => {}

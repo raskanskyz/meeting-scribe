@@ -540,9 +540,18 @@ export default function App() {
               {modelName(settings.activeModel)}
             </div>
           </div>
-          {settings.offlineMode && (
-            <span className="local-dot">Runs offline</span>
-          )}
+          <button
+            type="button"
+            role="switch"
+            aria-checked={settings.offlineMode}
+            className={`offline-toggle${settings.offlineMode ? " on" : ""}`}
+            title="Offline mode: nothing leaves this Mac (no downloads, polish or summaries)"
+            onClick={async () =>
+              setSettings(await api.setSettings({ offlineMode: !settings.offlineMode }))
+            }
+          >
+            Offline mode: {settings.offlineMode ? "On" : "Off"}
+          </button>
         </div>
       </nav>
 
