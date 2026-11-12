@@ -1,6 +1,6 @@
 # Meeting Scribe
 
-Local meeting recorder + transcriber for macOS. Records two tracks - your mic, and everyone else via a direct system-audio tap - then transcribes (Hebrew via [ivrit.ai](https://www.ivrit.ai/) fine-tunes, English and more via Whisper), identifies who said what, and writes a summary. Everything runs on your Mac; recordings and transcripts never leave it (summaries optionally go through your own Claude subscription - or turn on offline mode and nothing touches the network at all).
+Local meeting recorder + transcriber for macOS. Records two tracks - your mic, and everyone else via a direct system-audio tap - then transcribes (Hebrew via [ivrit.ai](https://www.ivrit.ai/) fine-tunes, English and more via Whisper), identifies who said what, and writes a summary. Everything runs on your Mac; recordings and transcripts never leave it (summaries optionally go through an AI command-line tool you already use, Claude Code or Codex - or turn on offline mode and nothing touches the network at all).
 
 ## Screenshots
 
@@ -58,10 +58,15 @@ On macOS 14.2+ (the default path) the app taps system audio directly - no audio 
   FluidAudio Swift sidecar) splits the meeting track into up to 8 speakers;
   a voiceprint registry (pyannote embeddings) auto-names people it has heard
   before, and renaming a speaker once enrolls them for future meetings.
-- **AI polish & summaries** - if the Claude Code CLI is installed, transcripts
-  get an error-correction sweep and a summary (exec summary, action items,
-  decisions, open questions - each with one-click copy). Uses your Claude
-  subscription; no API key. _Copy folder path_ copies the meeting's folder
+- **AI polish & summaries** - if a supported AI CLI is installed
+  ([Claude Code](https://claude.com/claude-code) or
+  [Codex](https://developers.openai.com/codex/cli)), transcripts get an
+  error-correction sweep and a summary (exec summary, action items, decisions,
+  open questions - each with one-click copy). Uses your own login for that tool;
+  no API key. The setup wizard and Settings detect what is installed, let you
+  pick one (preselected when it is the only one), and have a Test button, since
+  installed does not mean signed in. Adding another tool is one adapter file in
+  `src/main/providers/`. _Copy folder path_ copies the meeting's folder
   (transcript + summary) as an absolute path, handy for pointing an agent at it.
 - **Screen context (opt-in, off by default)** - polish and summaries can also
   use up to 10 screenshots of the screen recording, taken when the picture
@@ -87,7 +92,7 @@ On macOS 14.2+ (the default path) the app taps system audio directly - no audio 
   faster-whisper works on CPU)
 - Xcode Command Line Tools (`xcode-select --install`) and [Homebrew](https://brew.sh) - setup.sh checks and tells you if they're missing
 - For speaker identification: a free Hugging Face account (the wizard links you through it)
-- For summaries: [Claude Code](https://claude.com/claude-code) CLI signed in to your subscription
+- For summaries: [Claude Code](https://claude.com/claude-code) or [Codex](https://developers.openai.com/codex/cli) CLI, signed in
 - Permissions (macOS prompts on first use): microphone; Screen & System Audio Recording (system-audio tap for the meeting track, and the optional screen video); calendar
 
 ## Development
@@ -117,7 +122,7 @@ getUserMedia mic + system tap ──►   rec:append ──► <track>.webm
 getUserMedia screen (desktop) ──►   rec:append ──► screen.webm
 16 kHz PCM tap (live)         ──►   rec:feedPcm ─────────────►   python/stream.py   (MLX + Silero VAD)
                                     rec:finish  ─────────────►   python/transcribe.py (whisper + swift/diarize-sidecar)
-                                                └────────────►   claude -p …          (polish + summary)
+                                                └────────────►   claude / codex exec … (polish + summary)
                                     calendar:upcoming ────────►  swift/calendar-sidecar  (EventKit)
                                     (BlackHole route only)
                                     multi-out + output switch ►  swift/audio-sidecar     (CoreAudio)
@@ -146,17 +151,20 @@ Each recording is a folder in the recordings directory (Settings → Storage):
 - **Diarization fails with 401** - your Hugging Face token is invalid **or** you haven't accepted the model terms at [hf.co/pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1). Validate the token in the setup wizard (Settings → _Run setup wizard again_) to see which one it is.
 - **Player shows 00:00/00:00 after recording** - the transcription model isn't downloaded yet; grab it from the Models tab. No audio is lost.
 - **BlackHole missing after install (BlackHole route only)** - the audio system caches devices; `sudo killall coreaudiod` (setup.sh and the in-app installer do this for you).
+- **"CLI not found" for Claude Code or Codex** - Settings → AI polish and summaries lists what was found. The app probes PATH, common install dirs and a login shell; after installing, hit _Check again_ (it also re-checks when the window regains focus), or set the binary path by hand.
+- **Installed but polish or summary fails** - installed does not mean signed in. Use _Test_ in Settings to send a tiny prompt and see the tool's own error, then run `claude` or `codex login` in a terminal. A wrong model name shows up the same way; leave the model empty for Codex to use its default.
+- **Screenshots with Codex** - screen context sends screenshots to Codex as attached images (`codex exec --image`), the same opt-in as for Claude Code.
 
 ## Privacy
 
 Recording, transcription, and diarization run entirely on-device. Network is
-used only to download models from Hugging Face and, if enabled, to run Claude
-polish/summaries through your local Claude Code install - and offline mode
+used only to download models from Hugging Face and, if enabled, to run AI
+polish/summaries through the CLI you picked (Claude Code or Codex) - and offline mode
 turns both off.
 
 **Screen context is the exception to "transcript only".** If you enable it, the
 screenshots (JPEG, up to 1280 px wide) and the text recognized in them are sent
-to Claude along with the transcript, for meetings that have a `screen.webm`.
+to the AI tool along with the transcript, for meetings that have a `screen.webm`.
 A shared screen can show other people's information (chats, documents, emails),
 and that goes along too. The frames live in a temp folder that is deleted
 afterwards, text recognition runs locally, and nothing is sent when the feature

@@ -1,71 +1,19 @@
-import { execFileSync, spawn } from 'node:child_process'
 import fs from 'node:fs'
-import os from 'node:os'
-import path from 'node:path'
-import type { ActionItem, ClaudeStatus, MeetingSummary, TranscriptSegment } from '../shared/types'
+import type { ActionItem, MeetingSummary, TranscriptSegment } from '../shared/types'
+import type { Provider } from './providers'
 import { sidecarAsset } from './sidecar'
 import { fmtTs } from './transcript'
 import type { ScreenContext } from './screenContext'
 import { framesForRange, renderScreenContext } from './screenPrompt'
 
-// packaged Electron apps launch with a minimal PATH, so `claude` usually
-// isn't reachable the way it is from a terminal - probe the common installs
-const CANDIDATE_PATHS = [
-  path.join(os.homedir(), '.claude/local/claude'),
-  '/opt/homebrew/bin/claude',
-  '/usr/local/bin/claude',
-  path.join(os.homedir(), '.local/bin/claude'),
-  path.join(os.homedir(), 'bin/claude')
-]
-
 const GENERATE_TIMEOUT_MS = 5 * 60 * 1000
 const MAX_TRANSCRIPT_CHARS = 300_000
 
-function executable(p: string): boolean {
-  try {
-    fs.accessSync(p, fs.constants.X_OK)
-    return fs.statSync(p).isFile()
-  } catch {
-    return false
-  }
-}
-
-function shellWhich(): string | null {
-  try {
-    const out = execFileSync(process.env.SHELL || '/bin/zsh', ['-lc', 'command -v claude'], {
-      timeout: 5000,
-      encoding: 'utf8'
-    }).trim()
-    return out && executable(out) ? out : null
-  } catch {
-    return null
-  }
-}
-
-let autoDetected: string | null | undefined
-
-export function findClaude(override: string): string | null {
-  const o = override.trim()
-  if (o) return executable(o) ? o : null
-  if (autoDetected === undefined) {
-    const fromPath = (process.env.PATH ?? '')
-      .split(':')
-      .filter(Boolean)
-      .map((d) => path.join(d, 'claude'))
-    autoDetected = [...fromPath, ...CANDIDATE_PATHS].find(executable) ?? shellWhich()
-  }
-  return autoDetected
-}
-
-export function claudeStatus(override: string): ClaudeStatus {
-  const bin = findClaude(override)
-  if (bin) return { available: true, path: bin }
-  return {
-    available: false,
-    reason: override.trim()
-      ? `No executable at ${override.trim()}`
-      : 'Claude Code CLI not found on this machine'
-  }
+/** the provider chosen in Settings, its resolved binary, and the model to ask for */
+export interface Llm {
+  provider: Provider
+  bin: string
+  model: string
 }
 
 export interface SummaryInput {
@@ -108,83 +56,40 @@ Transcript:
 ${transcript}`
 }
 
-function runClaude(
-  bin: string,
-  model: string,
-  prompt: string,
-  timeoutMs: number = GENERATE_TIMEOUT_MS,
-  imageDir?: string
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    // a stale ANTHROPIC_API_KEY overrides subscription login and fails with
-    // "Invalid API key" - strip it so the CLI always uses its own auth
-    const env = { ...process.env }
-    delete env.ANTHROPIC_API_KEY
-    // screenshots are handed over as file paths in the prompt; Claude may only
-    // Read inside the one temp dir holding them (dontAsk denies everything else)
-    const imageArgs = imageDir
-      ? ['--tools=Read', '--permission-mode=dontAsk', `--add-dir=${imageDir}`]
-      : []
-    const child = spawn(bin, ['-p', '--output-format', 'json', '--model', model, ...imageArgs], {
-      cwd: os.tmpdir(), // neutral cwd so no project CLAUDE.md leaks into the prompt
-      env,
-      stdio: ['pipe', 'pipe', 'pipe']
-    })
-    let stdout = ''
-    let stderr = ''
-    const timer = setTimeout(() => {
-      child.kill('SIGKILL')
-      reject(new Error(`Claude timed out after ${Math.round(timeoutMs / 1000)}s`))
-    }, timeoutMs)
-    child.stdout.on('data', (d) => (stdout += d))
-    child.stderr.on('data', (d) => (stderr += d))
-    child.on('error', (e) => {
-      clearTimeout(timer)
-      reject(e)
-    })
-    child.on('close', (code) => {
-      clearTimeout(timer)
-      if (code === 0) resolve(stdout)
-      else reject(new Error(stderr.trim().slice(-400) || `claude exited with code ${code}`))
-    })
-    child.stdin.end(prompt)
-  })
-}
-
 /**
- * One Claude call that must return a JSON object. With screen context it tries
- * that first and, on ANY failure (timeout, bad reply, no Read access), reruns
+ * One model call that must return a JSON object. With screen context it tries
+ * that first and, on ANY failure (timeout, bad reply, no image access), reruns
  * with the plain transcript-only prompt - screen context is never a way for
- * polish or summary to fail.
+ * polish or summary to fail. A provider without image support gets the OCR text
+ * only, so there is nothing to attach.
  */
-async function claudeJson(
-  bin: string,
-  model: string,
+async function llmJson(
+  llm: Llm,
   plain: string,
-  withScreen: { prompt: string; dir: string } | null,
-  timeoutMs?: number
+  withScreen: { prompt: string; dir: string; files: string[] } | null,
+  timeoutMs: number = GENERATE_TIMEOUT_MS
 ): Promise<Record<string, unknown>> {
-  const attempt = async (prompt: string, dir?: string): Promise<Record<string, unknown>> => {
-    const wrapper = JSON.parse(await runClaude(bin, model, prompt, timeoutMs, dir)) as {
-      is_error?: boolean
-      result?: string
-    }
-    if (wrapper.is_error) throw new Error(wrapper.result || 'Claude returned an error')
-    return extractJson(String(wrapper.result ?? ''))
-  }
+  const attempt = async (
+    prompt: string,
+    images?: { dir: string; files: string[] }
+  ): Promise<Record<string, unknown>> =>
+    extractJson(llm.provider.name, await llm.provider.run(llm.bin, prompt, { model: llm.model, timeoutMs, images }))
   if (withScreen)
     try {
-      return await attempt(withScreen.prompt, withScreen.dir)
+      return await attempt(
+        withScreen.prompt,
+        llm.provider.supportsImages ? { dir: withScreen.dir, files: withScreen.files } : undefined
+      )
     } catch {
       /* fall back to transcript-only below */
     }
   return attempt(plain)
 }
 
-function extractJson(text: string): Record<string, unknown> {
+function extractJson(provider: string, text: string): Record<string, unknown> {
   const start = text.indexOf('{')
   const end = text.lastIndexOf('}')
-  if (start === -1 || end <= start) throw new Error('Claude did not return JSON')
+  if (start === -1 || end <= start) throw new Error(`${provider} did not return JSON`)
   return JSON.parse(text.slice(start, end + 1))
 }
 
@@ -245,7 +150,7 @@ const renderGroup = (g: LexiconGroup): string[] => {
  *   them is an editorial change masquerading as a correction - it mutates the
  *   record and, measured on one meeting, accounts for over half the edits.
  *
- * Ambiguous variants stay Claude's judgement call: several collide with ordinary
+ * Ambiguous variants stay the model's judgement call: several collide with ordinary
  * Hebrew words (נס = miracle, הלם = shock) that a find/replace would corrupt.
  */
 function glossary(): string {
@@ -290,8 +195,7 @@ Segments:
 `
 
 export async function lintTranscript(
-  bin: string,
-  model: string,
+  llm: Llm,
   segs: TranscriptSegment[],
   screen?: ScreenContext | null
 ): Promise<{
@@ -320,7 +224,7 @@ export async function lintTranscript(
 
   let changed = 0
   // one flaky batch used to throw straight out of here, so a single malformed
-  // Claude reply discarded the corrections from every other batch and left
+  // model reply discarded the corrections from every other batch and left
   // polishedAt unset. Isolate each batch and keep whatever succeeds.
   const failures: string[] = []
   for (const b of batches) {
@@ -332,14 +236,18 @@ export async function lintTranscript(
         : []
       const block = renderScreenContext(
         shown,
-        'Use it ONLY to decide how a misheard name, term or acronym was really spelled. It never justifies adding words that were not spoken.'
+        'Use it ONLY to decide how a misheard name, term or acronym was really spelled. It never justifies adding words that were not spoken.',
+        llm.provider.imageHint
       )
-      const parsed = await claudeJson(
-        bin,
-        model,
+      const parsed = await llmJson(
+        llm,
         prompt + numbered,
         screen && block
-          ? { prompt: prompt.replace('\nSegments:\n', `${block}\nSegments:\n`) + numbered, dir: screen.dir }
+          ? {
+              prompt: prompt.replace('\nSegments:\n', `${block}\nSegments:\n`) + numbered,
+              dir: screen.dir,
+              files: shown.map((f) => f.file)
+            }
           : null,
         LINT_TIMEOUT_MS
       )
@@ -376,29 +284,29 @@ export async function lintTranscript(
   }
 }
 
-export async function generateSummary(
-  bin: string,
-  model: string,
-  input: SummaryInput
-): Promise<MeetingSummary> {
+export async function generateSummary(llm: Llm, input: SummaryInput): Promise<MeetingSummary> {
+  const shown = input.screen?.frames.slice(0, SUMMARY_SCREEN_FRAMES) ?? []
   const block = input.screen
     ? renderScreenContext(
-        input.screen.frames.slice(0, SUMMARY_SCREEN_FRAMES),
-        'Use it ONLY as supporting context for what the meeting covered (names, documents, tools, figures on screen). The summary must still be grounded in what was said.'
+        shown,
+        'Use it ONLY as supporting context for what the meeting covered (names, documents, tools, figures on screen). The summary must still be grounded in what was said.',
+        llm.provider.imageHint
       )
     : ''
-  const parsed = await claudeJson(
-    bin,
-    model,
+  const parsed = await llmJson(
+    llm,
     buildPrompt(input),
-    input.screen && block ? { prompt: buildPrompt(input, block), dir: input.screen.dir } : null
+    input.screen && block
+      ? { prompt: buildPrompt(input, block), dir: input.screen.dir, files: shown.map((f) => f.file) }
+      : null
   )
   return {
     executiveSummary: typeof parsed.executiveSummary === 'string' ? parsed.executiveSummary : '',
     actionItems: actionItems(parsed.actionItems),
     keyDecisions: strArr(parsed.keyDecisions),
     openQuestions: strArr(parsed.openQuestions),
-    model,
+    model: llm.model || 'default model',
+    provider: llm.provider.name,
     generatedAt: new Date().toISOString()
   }
 }

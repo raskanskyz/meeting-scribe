@@ -1,4 +1,5 @@
 import DownloadError from "../components/DownloadError";
+import ProviderPicker from "../components/ProviderPicker";
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import {
@@ -6,7 +7,7 @@ import {
   DIARIZE_MODEL,
   type AudioSetupStatus,
   type CalendarResult,
-  type ClaudeStatus,
+  type ProviderStatus,
   type DownloadProgress,
   type HfValidation,
   type Settings
@@ -150,10 +151,10 @@ export default function SetupWizard({ settings, onChange }: Props) {
   }
 
   // ── summaries ──
-  const [claude, setClaude] = useState<ClaudeStatus | null>(null)
+  const [ai, setAi] = useState<(ProviderStatus & { name: string }) | null>(null)
   useEffect(() => {
-    if (STEPS[step] === 'Summaries') api.claudeStatus().then(setClaude)
-  }, [step])
+    if (STEPS[step] === 'Summaries' || STEPS[step] === 'Done') api.providerStatus().then(setAi)
+  }, [step, settings.provider, settings.claudeBinary, settings.codexBinary])
 
   // ── calendar ──
   const [cal, setCal] = useState<CalendarResult | null>(null)
@@ -483,8 +484,9 @@ export default function SetupWizard({ settings, onChange }: Props) {
             <h2>After the meeting</h2>
             <p className="hint">
               Meeting Scribe can polish the transcript and write a summary (decisions, action items,
-              open questions) using the Claude Code CLI and your existing Claude subscription - the
-              transcript goes to Claude and nowhere else. Or stay fully offline.
+              open questions) using an AI command-line tool already installed on this Mac and your
+              own login for it - the transcript goes to the tool you pick and nowhere else. Or stay
+              fully offline.
             </p>
             <div className="wiz-choices">
               <ChoiceCard
@@ -502,31 +504,30 @@ export default function SetupWizard({ settings, onChange }: Props) {
             </div>
             {!settings.offlineMode && (
               <div className="card" style={{ marginTop: 16 }}>
-                {claude?.available ? (
-                  <p className="hint">
-                    <span className="badge ok">found</span> Claude Code at <code>{claude.path}</code>
-                  </p>
+                <ProviderPicker settings={settings} patch={patch} />
+                {settings.provider === 'claude' ? (
+                  <div className="field" style={{ marginTop: 12 }}>
+                    <label>Summary model</label>
+                    <select
+                      value={settings.summaryModel}
+                      style={{ maxWidth: 220 }}
+                      onChange={(e) => patch({ summaryModel: e.target.value })}
+                    >
+                      <option value="sonnet">Sonnet - recommended</option>
+                      <option value="opus">Opus - deepest, slower</option>
+                      <option value="haiku">Haiku - fastest</option>
+                    </select>
+                  </div>
                 ) : (
-                  <div className="warn-banner">
-                    Claude Code CLI not found - summaries will stay disabled until it's installed.{' '}
-                    <button className="link" onClick={() => api.openExternal('https://claude.com/claude-code')}>
-                      Install it
-                    </button>
-                    , sign in once, and this picks it up automatically.
+                  <div className="field" style={{ marginTop: 12 }}>
+                    <label>Model (empty = the tool's default)</label>
+                    <input
+                      defaultValue={settings.codexModel}
+                      style={{ maxWidth: 220 }}
+                      onBlur={(e) => e.target.value.trim() !== settings.codexModel && patch({ codexModel: e.target.value.trim() })}
+                    />
                   </div>
                 )}
-                <div className="field" style={{ marginTop: 12 }}>
-                  <label>Summary model</label>
-                  <select
-                    value={settings.summaryModel}
-                    style={{ maxWidth: 220 }}
-                    onChange={(e) => patch({ summaryModel: e.target.value })}
-                  >
-                    <option value="sonnet">Sonnet - recommended</option>
-                    <option value="opus">Opus - deepest, slower</option>
-                    <option value="haiku">Haiku - fastest</option>
-                  </select>
-                </div>
               </div>
             )}
           </section>
@@ -535,7 +536,7 @@ export default function SetupWizard({ settings, onChange }: Props) {
         {name === 'Screen context' && (
           <section>
             <span className="eyebrow">Step 5</span>
-            <h2>Let Claude see the screen</h2>
+            <h2>Let the AI see the screen</h2>
             <p className="hint">
               Optional, and off unless you turn it on. When a meeting has a screen recording, polish
               and summaries can also use up to 10 screenshots taken when the screen changed, plus the
@@ -543,8 +544,8 @@ export default function SetupWizard({ settings, onChange }: Props) {
               shown.
             </p>
             <p className="hint">
-              If you turn it on, those screenshots and the recognized text are sent to Claude through
-              Claude Code, along with the transcript. A shared screen can show other people&apos;s
+              If you turn it on, those screenshots and the recognized text are sent to your chosen AI
+              tool, along with the transcript. A shared screen can show other people&apos;s
               information - chats, documents, emails - and that is sent too. Nothing is sent when
               there is no screen recording or when Fully offline is on.
             </p>
@@ -554,13 +555,13 @@ export default function SetupWizard({ settings, onChange }: Props) {
               <div className="wiz-choices">
                 <ChoiceCard
                   title="Transcript only"
-                  detail="Only the transcript text goes to Claude (default)"
+                  detail="Only the transcript text goes to the AI tool (default)"
                   active={!settings.screenContext}
                   onPick={() => patch({ screenContext: false })}
                 />
                 <ChoiceCard
                   title="Transcript + screen"
-                  detail="Also send screenshots and their recognized text to Claude"
+                  detail="Also send screenshots and their recognized text to the AI tool"
                   active={settings.screenContext}
                   onPick={() => patch({ screenContext: true })}
                 />
@@ -628,7 +629,7 @@ export default function SetupWizard({ settings, onChange }: Props) {
                     : '✗ Meeting audio not set up - mic only until BlackHole is installed'}
               </li>
               <li>{settings.diarize ? (hf?.ok ? '✓ Speaker recognition on' : '△ Speaker recognition on - token not validated yet') : '- Speaker recognition off'}</li>
-              <li>{settings.offlineMode ? '- Fully offline, no summaries' : claude?.available ? '✓ Polish + summaries via Claude Code' : '△ Summaries on, but Claude Code is not installed yet'}</li>
+              <li>{settings.offlineMode ? '- Fully offline, no summaries' : ai?.available ? `✓ Polish + summaries via ${ai.name}` : `△ Summaries on, but ${ai?.name ?? 'the AI tool'} is not installed yet`}</li>
               <li>{settings.screenContext && !settings.offlineMode ? '✓ Polish + summaries also see screenshots' : '- Screen context off'}</li>
               <li>{cal?.status === 'ok' ? '✓ Calendar connected' : '- Calendar not connected'}</li>
             </ul>
