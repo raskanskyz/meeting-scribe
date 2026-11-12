@@ -27,6 +27,13 @@ export function diarizeSidecar(): string {
     : path.join(app.getAppPath(), 'swift', 'diarize-sidecar')
 }
 
+/** The Vision OCR binary, packaged or built in-repo (npm run build:ocr). */
+export function ocrSidecar(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'ocr-sidecar')
+    : path.join(app.getAppPath(), 'swift', 'ocr-sidecar')
+}
+
 /** Absolute path to a python sidecar script, packaged or in-repo. */
 export function sidecarScript(name: string): string {
   return sidecarAsset(name)

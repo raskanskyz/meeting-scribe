@@ -5,6 +5,8 @@ import path from 'node:path'
 import type { ActionItem, ClaudeStatus, MeetingSummary, TranscriptSegment } from '../shared/types'
 import { sidecarAsset } from './sidecar'
 import { fmtTs } from './transcript'
+import type { ScreenContext } from './screenContext'
+import { framesForRange, renderScreenContext } from './screenPrompt'
 
 // packaged Electron apps launch with a minimal PATH, so `claude` usually
 // isn't reachable the way it is from a terminal - probe the common installs
@@ -71,9 +73,11 @@ export interface SummaryInput {
   createdAt: string
   speakers: string[]
   segments: TranscriptSegment[]
+  /** opt-in screenshots + OCR from the recording; absent means transcript-only */
+  screen?: ScreenContext | null
 }
 
-function buildPrompt(input: SummaryInput): string {
+function buildPrompt(input: SummaryInput, screen = ''): string {
   let transcript = input.segments
     .map((s) => `[${fmtTs(s.start)}] ${s.speaker}: ${s.text}`)
     .join('\n')
@@ -99,7 +103,7 @@ Rules:
 Meeting: ${input.title}
 Date: ${input.createdAt}
 Participants: ${input.speakers.join(', ') || 'unknown'}
-
+${screen}
 Transcript:
 ${transcript}`
 }
@@ -108,14 +112,20 @@ function runClaude(
   bin: string,
   model: string,
   prompt: string,
-  timeoutMs: number = GENERATE_TIMEOUT_MS
+  timeoutMs: number = GENERATE_TIMEOUT_MS,
+  imageDir?: string
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     // a stale ANTHROPIC_API_KEY overrides subscription login and fails with
     // "Invalid API key" - strip it so the CLI always uses its own auth
     const env = { ...process.env }
     delete env.ANTHROPIC_API_KEY
-    const child = spawn(bin, ['-p', '--output-format', 'json', '--model', model], {
+    // screenshots are handed over as file paths in the prompt; Claude may only
+    // Read inside the one temp dir holding them (dontAsk denies everything else)
+    const imageArgs = imageDir
+      ? ['--tools=Read', '--permission-mode=dontAsk', `--add-dir=${imageDir}`]
+      : []
+    const child = spawn(bin, ['-p', '--output-format', 'json', '--model', model, ...imageArgs], {
       cwd: os.tmpdir(), // neutral cwd so no project CLAUDE.md leaks into the prompt
       env,
       stdio: ['pipe', 'pipe', 'pipe']
@@ -139,6 +149,36 @@ function runClaude(
     })
     child.stdin.end(prompt)
   })
+}
+
+/**
+ * One Claude call that must return a JSON object. With screen context it tries
+ * that first and, on ANY failure (timeout, bad reply, no Read access), reruns
+ * with the plain transcript-only prompt - screen context is never a way for
+ * polish or summary to fail.
+ */
+async function claudeJson(
+  bin: string,
+  model: string,
+  plain: string,
+  withScreen: { prompt: string; dir: string } | null,
+  timeoutMs?: number
+): Promise<Record<string, unknown>> {
+  const attempt = async (prompt: string, dir?: string): Promise<Record<string, unknown>> => {
+    const wrapper = JSON.parse(await runClaude(bin, model, prompt, timeoutMs, dir)) as {
+      is_error?: boolean
+      result?: string
+    }
+    if (wrapper.is_error) throw new Error(wrapper.result || 'Claude returned an error')
+    return extractJson(String(wrapper.result ?? ''))
+  }
+  if (withScreen)
+    try {
+      return await attempt(withScreen.prompt, withScreen.dir)
+    } catch {
+      /* fall back to transcript-only below */
+    }
+  return attempt(plain)
 }
 
 function extractJson(text: string): Record<string, unknown> {
@@ -169,6 +209,8 @@ const actionItems = (v: unknown): ActionItem[] =>
 // batches small enough to land well inside their own, longer, budget.
 const LINT_CHUNK_CHARS = 4_000
 const LINT_TIMEOUT_MS = 10 * 60 * 1000
+const LINT_SCREEN_FRAMES = 3
+const SUMMARY_SCREEN_FRAMES = 10
 
 interface LexiconGroup {
   canonical: string
@@ -250,7 +292,8 @@ Segments:
 export async function lintTranscript(
   bin: string,
   model: string,
-  segs: TranscriptSegment[]
+  segs: TranscriptSegment[],
+  screen?: ScreenContext | null
 ): Promise<{
   segments: TranscriptSegment[]
   changed: number
@@ -283,10 +326,23 @@ export async function lintTranscript(
   for (const b of batches) {
     try {
       const numbered = b.map((i) => `${i}: ${segs[i].text}`).join('\n')
-      const stdout = await runClaude(bin, model, prompt + numbered, LINT_TIMEOUT_MS)
-      const wrapper = JSON.parse(stdout) as { is_error?: boolean; result?: string }
-      if (wrapper.is_error) throw new Error(wrapper.result || 'Claude returned an error')
-      const parsed = extractJson(String(wrapper.result ?? ''))
+      // only the screenshots from around this batch's slice of the meeting
+      const shown = screen
+        ? framesForRange(screen.frames, segs[b[0]].start, segs[b[b.length - 1]].end, LINT_SCREEN_FRAMES)
+        : []
+      const block = renderScreenContext(
+        shown,
+        'Use it ONLY to decide how a misheard name, term or acronym was really spelled. It never justifies adding words that were not spoken.'
+      )
+      const parsed = await claudeJson(
+        bin,
+        model,
+        prompt + numbered,
+        screen && block
+          ? { prompt: prompt.replace('\nSegments:\n', `${block}\nSegments:\n`) + numbered, dir: screen.dir }
+          : null,
+        LINT_TIMEOUT_MS
+      )
       const corrections = Array.isArray(parsed.corrections) ? parsed.corrections : []
       for (const c of corrections) {
         const i = Number((c as { i?: unknown })?.i)
@@ -325,10 +381,18 @@ export async function generateSummary(
   model: string,
   input: SummaryInput
 ): Promise<MeetingSummary> {
-  const stdout = await runClaude(bin, model, buildPrompt(input))
-  const wrapper = JSON.parse(stdout) as { is_error?: boolean; result?: string }
-  if (wrapper.is_error) throw new Error(wrapper.result || 'Claude returned an error')
-  const parsed = extractJson(String(wrapper.result ?? ''))
+  const block = input.screen
+    ? renderScreenContext(
+        input.screen.frames.slice(0, SUMMARY_SCREEN_FRAMES),
+        'Use it ONLY as supporting context for what the meeting covered (names, documents, tools, figures on screen). The summary must still be grounded in what was said.'
+      )
+    : ''
+  const parsed = await claudeJson(
+    bin,
+    model,
+    buildPrompt(input),
+    input.screen && block ? { prompt: buildPrompt(input, block), dir: input.screen.dir } : null
+  )
   return {
     executiveSummary: typeof parsed.executiveSummary === 'string' ? parsed.executiveSummary : '',
     actionItems: actionItems(parsed.actionItems),

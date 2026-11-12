@@ -9,6 +9,7 @@ recordings/
 swift/calendar-sidecar
 swift/audio-sidecar
 swift/audiosetup-sidecar
+swift/ocr-sidecar
 swift/diarize-sidecar
 swift/diarize/.build/
 

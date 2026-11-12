@@ -29,6 +29,7 @@ import { audioEnsure, audioStatus, captureMode } from "./audiosetup";
 import { validateHfToken } from "./hf";
 import { setTrayRecording } from "./tray";
 import { recordingFolder } from "./recordingFolder";
+import { collectScreenContext, type ScreenContext } from "./screenContext";
 import {
   buildTranscriptMd,
   type SpeakerRecord,
@@ -68,6 +69,7 @@ const DEFAULT_SETTINGS: Settings = {
   lintTranscripts: true,
   autoSummarize: true,
   offlineMode: false,
+  screenContext: false,
   deleteAudioWhenDone: false,
   onboardedAt: "",
   hideFromCapture: true,
@@ -120,7 +122,26 @@ const CLAUDE_MISSING =
 const OFFLINE_ON =
   "Offline mode is on (Settings) - AI polish and summaries are disabled.";
 
-async function lintAndSave(dir: string): Promise<LintResult> {
+/** run `fn` with screen context: the caller's, or (when none was passed) one
+ *  collected here and cleaned up after. null means transcript-only. */
+async function withScreen<T>(
+  dir: string,
+  given: ScreenContext | null | undefined,
+  fn: (screen: ScreenContext | null) => Promise<T>,
+): Promise<T> {
+  const own =
+    given === undefined ? await collectScreenContext(dir, loadSettings()) : null;
+  try {
+    return await fn(given ?? own);
+  } finally {
+    await own?.cleanup().catch(() => {});
+  }
+}
+
+async function lintAndSave(
+  dir: string,
+  screen?: ScreenContext | null,
+): Promise<LintResult> {
   const s = loadSettings();
   if (s.offlineMode) return { error: OFFLINE_ON };
   const bin = findClaude(s.claudeBinary);
@@ -133,8 +154,11 @@ async function lintAndSave(dir: string): Promise<LintResult> {
   if (!meta || !segs?.length)
     return { error: "Transcribe this recording first." };
   try {
-    const { segments, changed, failedBatches, totalBatches } =
-      await lintTranscript(bin, s.summaryModel || "sonnet", segs);
+    const { segments, changed, failedBatches, totalBatches } = await withScreen(
+      dir,
+      screen,
+      (sc) => lintTranscript(bin, s.summaryModel || "sonnet", segs, sc),
+    );
     if (changed) {
       // keep the untouched ASR output around; only the first lint writes it
       const rawPath = path.join(dir, "transcript.raw.json");
@@ -159,7 +183,10 @@ async function lintAndSave(dir: string): Promise<LintResult> {
   }
 }
 
-async function summarizeAndSave(dir: string): Promise<SummaryResult> {
+async function summarizeAndSave(
+  dir: string,
+  screen?: ScreenContext | null,
+): Promise<SummaryResult> {
   const s = loadSettings();
   if (s.offlineMode) return { error: OFFLINE_ON };
   const bin = findClaude(s.claudeBinary);
@@ -171,12 +198,15 @@ async function summarizeAndSave(dir: string): Promise<SummaryResult> {
   if (!meta || !segs?.length)
     return { error: "Transcribe this recording first." };
   try {
-    const summary = await generateSummary(bin, s.summaryModel || "sonnet", {
-      title: meta.title,
-      createdAt: meta.createdAt,
-      speakers: meta.speakers ?? [],
-      segments: segs,
-    });
+    const summary = await withScreen(dir, screen, (sc) =>
+      generateSummary(bin, s.summaryModel || "sonnet", {
+        title: meta.title,
+        createdAt: meta.createdAt,
+        speakers: meta.speakers ?? [],
+        segments: segs,
+        screen: sc,
+      }),
+    );
     await fsp.writeFile(
       path.join(dir, "summary.json"),
       JSON.stringify(summary, null, 2),
@@ -283,13 +313,22 @@ export function registerIpc(win: BrowserWindow): void {
   async function claudePost(id: string, recDir: string): Promise<void> {
     const after = loadSettings();
     if (!after.offlineMode && findClaude(after.claudeBinary)) {
-      if (after.lintTranscripts) {
-        send("transcribe:progress", { recordingId: id, phase: "linting" });
-        await lintAndSave(recDir);
-      }
-      if (after.autoSummarize) {
-        send("transcribe:progress", { recordingId: id, phase: "summarizing" });
-        await summarizeAndSave(recDir);
+      // screenshots + OCR are extracted once and shared by polish and summary
+      const screen =
+        after.lintTranscripts || after.autoSummarize
+          ? await collectScreenContext(recDir, after)
+          : null;
+      try {
+        if (after.lintTranscripts) {
+          send("transcribe:progress", { recordingId: id, phase: "linting" });
+          await lintAndSave(recDir, screen);
+        }
+        if (after.autoSummarize) {
+          send("transcribe:progress", { recordingId: id, phase: "summarizing" });
+          await summarizeAndSave(recDir, screen);
+        }
+      } finally {
+        await screen?.cleanup().catch(() => {});
       }
     }
     try {

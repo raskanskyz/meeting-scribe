@@ -279,6 +279,29 @@ export default function SettingsView({ settings, onChange }: Props) {
           >
             <input
               type="checkbox"
+              checked={settings.screenContext && !settings.offlineMode}
+              disabled={settings.offlineMode}
+              onChange={(e) => save({ screenContext: e.target.checked })}
+            />{" "}
+            Screen context - polish and summaries also see screenshots
+          </label>
+          <p className="hint" style={{ marginTop: 8 }}>
+            Off by default. For recordings with a screen video, up to 10
+            screenshots taken when the screen changed, plus the text read from
+            them on this Mac, are sent to Claude together with the transcript.
+            They can show other people's information. Unavailable in offline
+            mode; if it fails, polish and summaries use the transcript alone.
+          </p>
+          <label
+            style={{
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+              marginTop: 12,
+            }}
+          >
+            <input
+              type="checkbox"
               checked={settings.hideFromCapture}
               onChange={(e) => save({ hideFromCapture: e.target.checked })}
             />{" "}

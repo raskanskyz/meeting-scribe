@@ -22,8 +22,9 @@
     "build:calendar": "swiftc -O -o swift/calendar-sidecar swift/calendar.swift -framework EventKit -framework Foundation -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker swift/Info.plist",
     "build:audio": "swiftc -O -o swift/audio-sidecar swift/audio.swift -framework CoreAudio -framework Foundation",
     "build:audiosetup": "swiftc -O -o swift/audiosetup-sidecar swift/audiosetup.swift -framework CoreAudio -framework Foundation",
+    "build:ocr": "swiftc -O -o swift/ocr-sidecar swift/ocr.swift -framework Vision -framework ImageIO -framework Foundation",
     "build:diarize": "swift build -c release --package-path swift/diarize && cp swift/diarize/.build/release/diarize-sidecar swift/diarize-sidecar",
-    "pack": "npm run build:calendar && npm run build:audio && npm run build:audiosetup && npm run build:diarize && electron-vite build && NODE_OPTIONS=--experimental-require-module electron-builder --mac --dir",
+    "pack": "npm run build:calendar && npm run build:audio && npm run build:audiosetup && npm run build:ocr && npm run build:diarize && electron-vite build && NODE_OPTIONS=--experimental-require-module electron-builder --mac --dir",
     "install:app": "npm run pack && rm -rf '/Applications/Meeting Scribe.app' && cp -R 'dist.noindex/mac-arm64/Meeting Scribe.app' /Applications/",
     "package:share": "./scripts/package-share.sh"
   },
@@ -53,6 +54,10 @@
       {
         "from": "swift/audiosetup-sidecar",
         "to": "audiosetup-sidecar"
+      },
+      {
+        "from": "swift/ocr-sidecar",
+        "to": "ocr-sidecar"
       },
       {
         "from": "swift/diarize-sidecar",

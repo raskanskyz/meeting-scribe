@@ -16,6 +16,7 @@ SHARE="$OUT/share/meeting-scribe-install"
 [ swift/calendar-sidecar -nt swift/calendar.swift ] || npm run build:calendar
 [ swift/audio-sidecar -nt swift/audio.swift ] || npm run build:audio
 [ swift/audiosetup-sidecar -nt swift/audiosetup.swift ] || npm run build:audiosetup
+[ swift/ocr-sidecar -nt swift/ocr.swift ] || npm run build:ocr
 [ swift/diarize-sidecar -nt swift/diarize/main.swift ] || npm run build:diarize
 npx electron-vite build
 # identity=null skips code signing entirely: the binaries keep their ad-hoc

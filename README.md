@@ -63,6 +63,10 @@ On macOS 14.2+ (the default path) the app taps system audio directly - no audio 
   decisions, open questions - each with one-click copy). Uses your Claude
   subscription; no API key. _Copy folder path_ copies the meeting's folder
   (transcript + summary) as an absolute path, handy for pointing an agent at it.
+- **Screen context (opt-in, off by default)** - polish and summaries can also
+  use up to 10 screenshots of the screen recording, taken when the picture
+  changed, plus the text read from them on-device with Apple Vision. Turn it on
+  in Settings → Privacy or in the setup wizard. See [Privacy](#privacy).
 - **Calendar aware** - a Swift EventKit sidecar lists upcoming meetings,
   prefills the title and invitees, and notifies you two minutes before a
   meeting starts.
@@ -118,6 +122,7 @@ getUserMedia screen (desktop) ──►   rec:append ──► screen.webm
                                     (BlackHole route only)
                                     multi-out + output switch ►  swift/audio-sidecar     (CoreAudio)
                                     setup wizard status/heal ─►  swift/audiosetup-sidecar (CoreAudio)
+                                    screen context (opt-in) ──►  swift/ocr-sidecar       (Vision OCR)
 ```
 
 Each recording is a folder in the recordings directory (Settings → Storage):
@@ -148,6 +153,14 @@ Recording, transcription, and diarization run entirely on-device. Network is
 used only to download models from Hugging Face and, if enabled, to run Claude
 polish/summaries through your local Claude Code install - and offline mode
 turns both off.
+
+**Screen context is the exception to "transcript only".** If you enable it, the
+screenshots (JPEG, up to 1280 px wide) and the text recognized in them are sent
+to Claude along with the transcript, for meetings that have a `screen.webm`.
+A shared screen can show other people's information (chats, documents, emails),
+and that goes along too. The frames live in a temp folder that is deleted
+afterwards, text recognition runs locally, and nothing is sent when the feature
+is off, the meeting has no screen recording, or offline mode is on.
 
 ## License
 

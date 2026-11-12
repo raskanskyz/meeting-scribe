@@ -23,6 +23,9 @@ export interface Settings {
   /** never touch the network: no Claude polish/summaries, no model downloads,
    *  sidecars forced to HF_HUB_OFFLINE */
   offlineMode: boolean;
+  /** opt-in: polish and summaries also get screenshots from screen.webm (and the
+   *  text read from them on-device). Sent to Claude when on; never in offline mode */
+  screenContext: boolean;
   /** delete the raw track audio once transcript (+ polish/summary, when those
    *  are enabled) is on disk - reclaims space, makes re-transcribing impossible */
   deleteAudioWhenDone: boolean;
