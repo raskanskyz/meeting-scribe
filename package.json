@@ -2,6 +2,14 @@
   "name": "meeting-scribe",
   "version": "1.0.0",
   "description": "Local Hebrew meeting recorder + transcriber (mic + system audio, ivrit.ai whisper)",
+  "homepage": "https://github.com/raskanskyz/meeting-scribe#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/raskanskyz/meeting-scribe.git"
+  },
+  "bugs": {
+    "url": "https://github.com/raskanskyz/meeting-scribe/issues"
+  },
   "main": "out/main/index.js",
   "private": true,
   "license": "MIT",
