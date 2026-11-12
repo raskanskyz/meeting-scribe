@@ -2,6 +2,22 @@
 
 Local meeting recorder + transcriber for macOS. Records two tracks - your mic, and everyone else via system audio - then transcribes (Hebrew via [ivrit.ai](https://www.ivrit.ai/) fine-tunes, English and more via Whisper), identifies who said what, and writes a summary. Everything runs on your Mac; recordings and transcripts never leave it (summaries optionally go through your own Claude subscription - or turn on offline mode and nothing touches the network at all).
 
+## Screenshots
+
+The screenshots below use made-up demo data.
+
+![Record view: start and stop a two-track recording](docs/screenshots/record.png)
+
+![Library: list of recorded and transcribed meetings](docs/screenshots/library.png)
+
+![Meeting details: speaker timeline and AI summary](docs/screenshots/meeting.png)
+
+![Models: choose and download transcription models](docs/screenshots/models.png)
+
+![Settings: audio capture, folders and speaker identification](docs/screenshots/settings.png)
+
+![First-run setup wizard](docs/screenshots/setup-wizard.png)
+
 ## Install
 
 ```bash
