@@ -1,6 +1,22 @@
 import { spawn } from 'node:child_process'
+import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+
+/**
+ * PATH for the child with the binary's own dir (and its symlink target's dir)
+ * first: node-script CLIs start with `#!/usr/bin/env node`, and the node that
+ * installed them lives next to them, not on an app launched with a minimal PATH.
+ */
+export function childPath(bin: string, pathEnv = ''): string {
+  let real = bin
+  try {
+    real = fs.realpathSync(bin)
+  } catch {
+    /* keep the given path */
+  }
+  return [...new Set([path.dirname(bin), path.dirname(real), ...pathEnv.split(':').filter(Boolean)])].join(':')
+}
 
 /** Spawn a CLI with the prompt on stdin; resolve its stdout, reject with stderr's tail. */
 export function runCli(
@@ -14,7 +30,7 @@ export function runCli(
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, {
       cwd: os.tmpdir(), // neutral cwd so no project instructions file leaks into the prompt
-      env,
+      env: { ...env, PATH: childPath(bin, env.PATH) },
       stdio: ['pipe', 'pipe', 'pipe']
     })
     let stdout = ''
