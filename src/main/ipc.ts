@@ -107,7 +107,7 @@ async function readJson<T>(p: string): Promise<T | null> {
 /** sidecar network posture: HF token when allowed, hard offline otherwise */
 const sidecarEnv = (s: Settings): Record<string, string> =>
   s.offlineMode
-    ? { HF_HUB_OFFLINE: "1" }
+    ? { HF_HUB_OFFLINE: "1", UV_OFFLINE: "1" }
     : s.hfToken
       ? { HF_TOKEN: s.hfToken }
       : {};
@@ -431,7 +431,9 @@ export function registerIpc(win: BrowserWindow): void {
       lang,
     ];
     args.push("--engine", modelEngine(model));
-    if (s.diarize) {
+    // the Nemotron helper downloads its model on first use, so offline mode
+    // diarizes only once that model is already on disk
+    if (s.diarize && (!s.offlineMode || diarizeModelReady())) {
       const cache = diarizeCache();
       await fsp.mkdir(cache, { recursive: true });
       args.push("--diarize-cache", cache, "--voiceprints", voiceprintsPath());
@@ -695,6 +697,7 @@ export function registerIpc(win: BrowserWindow): void {
         s.language,
         (seg) => send("live:segment", { recordingId: id, ...seg }),
         (message) => send("live:error", { recordingId: id, message }),
+        sidecarEnv(s),
       );
       liveSessions.set(id, session);
       live = true;

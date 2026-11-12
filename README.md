@@ -69,8 +69,10 @@ On macOS 14.2+ (the default path) the app taps system audio directly - no audio 
 - **Menu-bar app** - start/stop from the tray or ⌘R; the window can be closed
   while recording continues. (BlackHole route only: the output device
   auto-switches during recording and is restored afterwards.)
-- **Offline mode** - hard-disables model downloads and Claude; sidecars run
-  with `HF_HUB_OFFLINE=1`.
+- **Offline mode** - nothing leaves your Mac: hard-disables model downloads and
+  Claude; sidecars run with `HF_HUB_OFFLINE=1`. Toggle it from the bottom of the
+  sidebar or Settings > Privacy. Recordings are still saved locally; ones made
+  while it is on get no polish or summary - generate them by hand later.
 - **Disk reclaim** - optionally delete raw audio once the transcript (and
   polish/summary, when enabled) is safely on disk.
 
