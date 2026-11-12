@@ -1,0 +1,93 @@
+{
+  "name": "meeting-scribe",
+  "version": "1.0.0",
+  "description": "Local Hebrew meeting recorder + transcriber (mic + system audio, ivrit.ai whisper)",
+  "homepage": "https://github.com/raskanskyz/meeting-scribe#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/raskanskyz/meeting-scribe.git"
+  },
+  "bugs": {
+    "url": "https://github.com/raskanskyz/meeting-scribe/issues"
+  },
+  "main": "out/main/index.js",
+  "private": true,
+  "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "start": "electron-vite preview",
+    "test": "node --test src/main/*.test.mjs",
+    "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json",
+    "build:calendar": "swiftc -O -o swift/calendar-sidecar swift/calendar.swift -framework EventKit -framework Foundation -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker swift/Info.plist",
+    "build:audio": "swiftc -O -o swift/audio-sidecar swift/audio.swift -framework CoreAudio -framework Foundation",
+    "build:audiosetup": "swiftc -O -o swift/audiosetup-sidecar swift/audiosetup.swift -framework CoreAudio -framework Foundation",
+    "build:diarize": "swift build -c release --package-path swift/diarize && cp swift/diarize/.build/release/diarize-sidecar swift/diarize-sidecar",
+    "pack": "npm run build:calendar && npm run build:audio && npm run build:audiosetup && npm run build:diarize && electron-vite build && NODE_OPTIONS=--experimental-require-module electron-builder --mac --dir",
+    "install:app": "npm run pack && rm -rf '/Applications/Meeting Scribe.app' && cp -R 'dist.noindex/mac-arm64/Meeting Scribe.app' /Applications/",
+    "package:share": "./scripts/package-share.sh"
+  },
+  "build": {
+    "appId": "dev.eranr.meeting-scribe",
+    "productName": "Meeting Scribe",
+    "directories": {
+      "output": "dist.noindex"
+    },
+    "files": [
+      "out/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "python",
+        "to": "python"
+      },
+      {
+        "from": "swift/calendar-sidecar",
+        "to": "calendar-sidecar"
+      },
+      {
+        "from": "swift/audio-sidecar",
+        "to": "audio-sidecar"
+      },
+      {
+        "from": "swift/audiosetup-sidecar",
+        "to": "audiosetup-sidecar"
+      },
+      {
+        "from": "swift/diarize-sidecar",
+        "to": "diarize-sidecar"
+      }
+    ],
+    "mac": {
+      "icon": "build/icon.icns",
+      "identity": null,
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Meeting Scribe records your microphone during meetings.",
+        "NSAudioCaptureUsageDescription": "Meeting Scribe records the meeting audio played on this Mac so it can transcribe what other participants say.",
+        "NSCalendarsUsageDescription": "Meeting Scribe reads your calendar to show upcoming meetings and prefill recording details.",
+        "NSCalendarsFullAccessUsageDescription": "Meeting Scribe reads your calendar to show upcoming meetings and prefill recording details."
+      }
+    }
+  },
+  "dependencies": {
+    "lucide-react": "^1.27.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "typescript": "^6.0.3",
+    "vite": "^7.3.6"
+  }
+}

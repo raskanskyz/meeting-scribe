@@ -1,0 +1,72 @@
+{
+  "_readme": [
+    "Example domain lexicon for Meeting Scribe. Replace the entries with your own terms.",
+    "normalization.groups is rendered into the transcript lint prompt, so Claude",
+    "repairs terms in context rather than by find/replace.",
+    "See normalization._normalize_rule for which entries get substituted.",
+    "safe_auto=false marks a variant that is also a real word in the speaker's language:",
+    "the lint may substitute it from context, but nothing may do so unconditionally."
+  ],
+  "decoder_bias_rejected": {
+    "_verdict": "Do not pass these terms to Whisper as hotwords or initial_prompt. The lint glossary is the right layer: it costs no decode budget and cannot delete speech.",
+    "_mechanism": "Whatever the prompt occupies is taken from the budget the decoder needs to emit words, so any list large enough to bias is large enough to cost transcript.",
+    "_useful_facts": "A model fine-tuned for one script will not switch script mid-sentence, so biasing it toward Latin terms does little."
+  },
+  "normalization": {
+    "_note": "variants are matched on word boundaries. safe_auto=false means the string is also a legitimate word in the speaker's language - leave it to a human or gate it on nearby context.",
+    "groups": [
+      {
+        "canonical": "Kubernetes",
+        "category": "infra",
+        "variants": ["קוברנטיס", "קוברנטס", "קובר נטיס"],
+        "normalize": true
+      },
+      {
+        "canonical": "PostgreSQL",
+        "category": "data",
+        "variants": ["פוסטגרס", "פוסטגרסקיואל"],
+        "normalize": true
+      },
+      {
+        "canonical": "Redis",
+        "category": "data",
+        "variants": ["רדיס", "רדיז"],
+        "risky_variants": [
+          { "text": "ריד", "safe_auto": false, "why": "also an ordinary short word" }
+        ],
+        "normalize": true
+      },
+      {
+        "canonical": "Grafana",
+        "category": "observability",
+        "variants": ["גרפנה", "גרפאנה"],
+        "normalize": true
+      },
+      {
+        "canonical": "kubectl",
+        "category": "infra",
+        "variants": ["קובקטל", "קיוב קטל"],
+        "normalize": true
+      },
+      {
+        "canonical": "staging",
+        "category": "process",
+        "variants": ["סטייג'ינג", "סטייגינג"],
+        "normalize": false
+      },
+      {
+        "canonical": "deploy",
+        "category": "process",
+        "variants": ["דפלוי", "דיפלוי"],
+        "normalize": false
+      },
+      {
+        "canonical": "sprint",
+        "category": "process",
+        "variants": ["ספרינט"],
+        "normalize": false
+      }
+    ],
+    "_normalize_rule": "normalize=true: the term has one canonical written form that is not in the speaker's script - proper nouns, product/service names, commands, acronyms, literal identifiers. The lint substitutes these. normalize=false: an ordinary English word used as a loanword inside the speaker's language; the native script is a correct transcription, so the lint may repair a mangled rendering but must NOT convert it to Latin."
+  }
+}
