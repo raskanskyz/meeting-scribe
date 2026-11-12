@@ -5,7 +5,7 @@ Local meeting recorder + transcriber for macOS. Records two tracks - your mic, a
 ## Install
 
 ```bash
-git clone <this-repo> meeting-scribe
+git clone https://github.com/raskanskyz/meeting-scribe.git meeting-scribe
 cd meeting-scribe
 ./scripts/setup.sh
 ```
