@@ -17,7 +17,7 @@ interface Props {
   onChange: (s: Settings) => void
 }
 
-const STEPS = ['Welcome', 'Language', 'Meeting audio', 'Speakers', 'Summaries', 'Calendar', 'Done'] as const
+const STEPS = ['Welcome', 'Language', 'Meeting audio', 'Speakers', 'Summaries', 'Screen context', 'Calendar', 'Done'] as const
 
 const HEBREW_MODEL = 'mlx-community/ivrit-ai-whisper-large-v3-turbo-mlx'
 const ENGLISH_MODEL = 'mlx-community/whisper-large-v3-turbo'
@@ -532,9 +532,46 @@ export default function SetupWizard({ settings, onChange }: Props) {
           </section>
         )}
 
-        {name === 'Calendar' && (
+        {name === 'Screen context' && (
           <section>
             <span className="eyebrow">Step 5</span>
+            <h2>Let Claude see the screen</h2>
+            <p className="hint">
+              Optional, and off unless you turn it on. When a meeting has a screen recording, polish
+              and summaries can also use up to 10 screenshots taken when the screen changed, plus the
+              text read from them on this Mac. That helps with names, terms and what was being
+              shown.
+            </p>
+            <p className="hint">
+              If you turn it on, those screenshots and the recognized text are sent to Claude through
+              Claude Code, along with the transcript. A shared screen can show other people&apos;s
+              information - chats, documents, emails - and that is sent too. Nothing is sent when
+              there is no screen recording or when Fully offline is on.
+            </p>
+            {settings.offlineMode ? (
+              <div className="warn-banner">Not available: Fully offline is on (previous step).</div>
+            ) : (
+              <div className="wiz-choices">
+                <ChoiceCard
+                  title="Transcript only"
+                  detail="Only the transcript text goes to Claude (default)"
+                  active={!settings.screenContext}
+                  onPick={() => patch({ screenContext: false })}
+                />
+                <ChoiceCard
+                  title="Transcript + screen"
+                  detail="Also send screenshots and their recognized text to Claude"
+                  active={settings.screenContext}
+                  onPick={() => patch({ screenContext: true })}
+                />
+              </div>
+            )}
+          </section>
+        )}
+
+        {name === 'Calendar' && (
+          <section>
+            <span className="eyebrow">Step 6</span>
             <h2>Your meetings, one click away</h2>
             <p className="hint">
               Meeting Scribe reads the calendars already on this Mac (Apple Calendar - iCloud, Google,
@@ -592,6 +629,7 @@ export default function SetupWizard({ settings, onChange }: Props) {
               </li>
               <li>{settings.diarize ? (hf?.ok ? '✓ Speaker recognition on' : '△ Speaker recognition on - token not validated yet') : '- Speaker recognition off'}</li>
               <li>{settings.offlineMode ? '- Fully offline, no summaries' : claude?.available ? '✓ Polish + summaries via Claude Code' : '△ Summaries on, but Claude Code is not installed yet'}</li>
+              <li>{settings.screenContext && !settings.offlineMode ? '✓ Polish + summaries also see screenshots' : '- Screen context off'}</li>
               <li>{cal?.status === 'ok' ? '✓ Calendar connected' : '- Calendar not connected'}</li>
             </ul>
             <p className="hint">
