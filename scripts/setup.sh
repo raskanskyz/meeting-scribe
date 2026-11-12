@@ -44,10 +44,8 @@ else
   ok "BlackHole 2ch already installed"
 fi
 
-PKGS="uv node"
-[ "$NEEDS_BLACKHOLE" = 1 ] && PKGS="switchaudio-osx $PKGS"
-for pkg in $PKGS; do
-  if brew list "$pkg" >/dev/null 2>&1 || command -v "${pkg/switchaudio-osx/SwitchAudioSource}" >/dev/null 2>&1; then
+for pkg in uv node; do
+  if brew list "$pkg" >/dev/null 2>&1 || command -v "$pkg" >/dev/null 2>&1; then
     ok "$pkg already installed"
   else
     brew install "$pkg"

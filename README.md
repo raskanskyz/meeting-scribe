@@ -1,6 +1,6 @@
 # Meeting Scribe
 
-Local meeting recorder + transcriber for macOS. Records two tracks - your mic, and everyone else via system audio - then transcribes (Hebrew via [ivrit.ai](https://www.ivrit.ai/) fine-tunes, English and more via Whisper), identifies who said what, and writes a summary. Everything runs on your Mac; recordings and transcripts never leave it (summaries optionally go through your own Claude subscription - or turn on offline mode and nothing touches the network at all).
+Local meeting recorder + transcriber for macOS. Records two tracks - your mic, and everyone else via a direct system-audio tap - then transcribes (Hebrew via [ivrit.ai](https://www.ivrit.ai/) fine-tunes, English and more via Whisper), identifies who said what, and writes a summary. Everything runs on your Mac; recordings and transcripts never leave it (summaries optionally go through your own Claude subscription - or turn on offline mode and nothing touches the network at all).
 
 ## Install
 
@@ -10,25 +10,23 @@ cd meeting-scribe
 ./scripts/setup.sh
 ```
 
-That's the whole install. The script installs the system dependencies (asks for your password once - BlackHole is an audio driver), builds the app, puts **Meeting Scribe.app** in /Applications and launches it. The script is idempotent - if it fails partway (e.g. missing Xcode Command Line Tools or Homebrew), fix what its error message says and re-run it. The in-app setup wizard walks you through the rest: transcription model, meeting-audio capture, speaker recognition, summaries and calendar.
+That's the whole install. The script installs the system dependencies, builds the app, puts **Meeting Scribe.app** in /Applications and launches it. The script is idempotent - if it fails partway (e.g. missing Xcode Command Line Tools or Homebrew), fix what its error message says and re-run it. The in-app setup wizard walks you through the rest: transcription model, meeting-audio capture, speaker recognition, summaries and calendar.
 
 ## What setup.sh installs
 
 | Dependency           | Why                                                                                                |
 | -------------------- | -------------------------------------------------------------------------------------------------- |
-| BlackHole 2ch (cask) | Virtual audio device - captures the meeting's system audio                                         |
-| switchaudio-osx      | Auto-switches sound output to the multi-output device while recording, and back after              |
 | uv                   | Runs the Python transcription sidecar (faster-whisper / MLX / pyannote), which manages its own env |
 | node                 | Builds the Electron app                                                                            |
 
-The Multi-Output Device itself (speakers + BlackHole) is created **by the app** - no Audio MIDI Setup needed.
+On macOS 14.2+ (the default path) the app taps system audio directly - no audio driver, no password, no output switching, and the volume keys keep working while recording. macOS asks once to allow system-audio recording.
 
-**On macOS 14.2+ BlackHole is optional**: by default the app taps system audio directly (ScreenCaptureKit/CATap) - no driver, no output switching, and the volume keys keep working while recording. BlackHole remains the fallback for older macOS, selectable under Settings → Meeting audio capture.
+**Legacy BlackHole route (macOS older than 14.2 only):** setup.sh additionally installs [BlackHole 2ch](https://github.com/ExistentialAudio/BlackHole), asks for your password once (audio driver, restarts coreaudiod), and the app creates the "Meeting Scribe" Multi-Output Device (speakers + BlackHole) itself. It can also be forced on newer macOS under Settings → Meeting audio capture. Speaker identification still needs macOS 14+.
 
 ## Features
 
 - **Two-track audio** - your mic ("Me") and the meeting's system audio ("Them",
-  via [BlackHole](https://github.com/ExistentialAudio/BlackHole)) are recorded
+  via a direct system-audio tap; BlackHole only as a legacy fallback) are recorded
   as separate `.webm` files, so who-said-what never mixes.
 - **Screen recording** - on by default; capture the full screen or a specific
   window (browser, Slack, Zoom…), saved as `screen.webm` with the meeting's
@@ -53,8 +51,8 @@ The Multi-Output Device itself (speakers + BlackHole) is created **by the app** 
   prefills the title and invitees, and notifies you two minutes before a
   meeting starts.
 - **Menu-bar app** - start/stop from the tray or ⌘R; the window can be closed
-  while recording continues. Output device auto-switches during recording and
-  is restored afterwards.
+  while recording continues. (BlackHole route only: the output device
+  auto-switches during recording and is restored afterwards.)
 - **Offline mode** - hard-disables model downloads and Claude; sidecars run
   with `HF_HUB_OFFLINE=1`.
 - **Disk reclaim** - optionally delete raw audio once the transcript (and
@@ -62,12 +60,13 @@ The Multi-Output Device itself (speakers + BlackHole) is created **by the app** 
 
 ## Requirements
 
-- Apple Silicon Mac, macOS 13+ (MLX live transcription is GPU-only; batch
+- Apple Silicon Mac, macOS 14.2+ (14+ is the floor for speaker identification, 14.2+ for
+  driver-free meeting audio; MLX live transcription is GPU-only; batch
   faster-whisper works on CPU)
 - Xcode Command Line Tools (`xcode-select --install`) and [Homebrew](https://brew.sh) - setup.sh checks and tells you if they're missing
 - For speaker identification: a free Hugging Face account (the wizard links you through it)
 - For summaries: [Claude Code](https://claude.com/claude-code) CLI signed in to your subscription
-- Permissions: microphone, screen recording, calendar - macOS prompts on first use
+- Permissions (macOS prompts on first use): microphone; Screen & System Audio Recording (system-audio tap for the meeting track, and the optional screen video); calendar
 
 ## Development
 
@@ -92,12 +91,13 @@ uv run --with numpy python tests/test_mic_speakers.py   # likewise test_mlx_vad.
 ```
 renderer (React)                    main (Electron)              sidecars
 ────────────────                    ───────────────              ────────
-getUserMedia mic + BlackHole  ──►   rec:append ──► <track>.webm
+getUserMedia mic + system tap ──►   rec:append ──► <track>.webm
 getUserMedia screen (desktop) ──►   rec:append ──► screen.webm
 16 kHz PCM tap (live)         ──►   rec:feedPcm ─────────────►   python/stream.py   (MLX + Silero VAD)
                                     rec:finish  ─────────────►   python/transcribe.py (whisper + swift/diarize-sidecar)
                                                 └────────────►   claude -p …          (polish + summary)
                                     calendar:upcoming ────────►  swift/calendar-sidecar  (EventKit)
+                                    (BlackHole route only)
                                     multi-out + output switch ►  swift/audio-sidecar     (CoreAudio)
                                     setup wizard status/heal ─►  swift/audiosetup-sidecar (CoreAudio)
 ```
@@ -107,7 +107,7 @@ Each recording is a folder in the recordings directory (Settings → Storage):
 ```
 2026-07-28T10-30-00/
   mic.webm            # you
-  system.webm         # them (BlackHole tap)
+  system.webm         # them (system-audio tap)
   screen.webm         # optional screen video (with mixed audio)
   live.json           # live-transcription preview segments
   transcript.json/.md # final transcript (post-diarization, post-polish)
@@ -119,10 +119,10 @@ Each recording is a folder in the recordings directory (Settings → Storage):
 
 ## Troubleshooting
 
-- **Meeting track is silent** - sound output must be the "Meeting Scribe" multi-output device while recording. The app switches to it automatically; if the device is stale (you changed speakers), use Settings → _Rebuild audio device for current speakers_.
+- **Meeting track is silent** - check your Mac isn't muted (the tap records post-volume audio) and that Meeting Scribe is allowed under Privacy & Security → Screen & System Audio Recording. BlackHole route only: sound output must be the "Meeting Scribe" multi-output device (the app switches automatically); if it is stale after changing speakers, use Settings → _Rebuild audio device for current speakers_.
 - **Diarization fails with 401** - your Hugging Face token is invalid **or** you haven't accepted the model terms at [hf.co/pyannote/speaker-diarization-community-1](https://huggingface.co/pyannote/speaker-diarization-community-1). Validate the token in the setup wizard (Settings → _Run setup wizard again_) to see which one it is.
 - **Player shows 00:00/00:00 after recording** - the transcription model isn't downloaded yet; grab it from the Models tab. No audio is lost.
-- **BlackHole missing after install** - the audio system caches devices; `sudo killall coreaudiod` (setup.sh and the in-app installer do this for you).
+- **BlackHole missing after install (BlackHole route only)** - the audio system caches devices; `sudo killall coreaudiod` (setup.sh and the in-app installer do this for you).
 
 ## Privacy
 
