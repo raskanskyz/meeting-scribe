@@ -1,4 +1,5 @@
 import { downloadError } from "../shared/downloadError";
+import { safeFileName } from "../shared/transcriptExport";
 import {
   app,
   clipboard,
@@ -553,6 +554,23 @@ export function registerIpc(win: BrowserWindow): void {
   ipcMain.handle("clipboard:write", (_e, text: string) => {
     clipboard.writeText(text);
   });
+
+  // native save sheet; resolves to the chosen path, or null if cancelled
+  ipcMain.handle(
+    "transcript:save",
+    async (_e, name: string, text: string): Promise<string | null> => {
+      const res = await dialog.showSaveDialog(win, {
+        defaultPath: path.join(
+          app.getPath("documents"),
+          `${safeFileName(name)}.md`,
+        ),
+        filters: [{ name: "Markdown", extensions: ["md"] }],
+      });
+      if (res.canceled || !res.filePath) return null;
+      await fsp.writeFile(res.filePath, text, "utf8");
+      return res.filePath;
+    },
+  );
 
   // volume keys can't control the multi-output aggregate while recording, so
   // the deck exposes a slider that reaches the physical speakers underneath

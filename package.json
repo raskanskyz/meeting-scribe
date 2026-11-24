@@ -17,7 +17,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "start": "electron-vite preview",
-    "test": "node --test src/main/*.test.mjs",
+    "test": "node --test src/main/*.test.mjs src/shared/*.test.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json",
     "build:calendar": "swiftc -O -o swift/calendar-sidecar swift/calendar.swift -framework EventKit -framework Foundation -Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker swift/Info.plist",
     "build:audio": "swiftc -O -o swift/audio-sidecar swift/audio.swift -framework CoreAudio -framework Foundation",

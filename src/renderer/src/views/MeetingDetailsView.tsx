@@ -4,9 +4,10 @@ import {
   useRef,
   useState,
 } from "react";
-import { ChevronLeft, Pencil } from "lucide-react";
+import { Check, ChevronLeft, Copy, Download, Pencil } from "lucide-react";
 import { api } from "../api";
 import { summaryClipboardSections } from "../summaryClipboard";
+import { buildTranscriptExport } from "../../../shared/transcriptExport";
 import { SPEAKER_COLORS } from "../speakerColors";
 import { fmtDur, fmtTs, phaseLabel } from "../fmt";
 import MeetingPlayer, { type PlayerHandle } from "../components/MeetingPlayer";
@@ -152,6 +153,28 @@ export default function MeetingDetailsView({
     api.getTranscriptSegments(rec.id).then(setSegs);
   };
   const seek = (sec: number) => playerRef.current?.seek(sec);
+
+  // Markdown export for pasting into an AI chat: header, summary if one
+  // exists, then the speaker-merged transcript
+  const transcriptMd = () =>
+    buildTranscriptExport({
+      title: rec.title,
+      createdAt: rec.createdAt,
+      durationSec: rec.durationSec,
+      segments: segs ?? [],
+      invitees: rec.invitees,
+      summary,
+    });
+  const flashCopied = (key: string) => {
+    setCopied(key);
+    setTimeout(() => setCopied((c) => (c === key ? null : c)), 1500);
+  };
+  const copyTranscript = () =>
+    api.copyText(transcriptMd()).then(() => flashCopied("transcript"));
+  const saveTranscript = () =>
+    api
+      .saveTranscriptFile(rec.title || "Meeting", transcriptMd())
+      .then((p) => p && flashCopied("saved"));
 
   const copySection = (key: string, text: string) => {
     api.copyText(text).then(() => {
@@ -455,6 +478,30 @@ export default function MeetingDetailsView({
                   {linting ? "Polishing…" : `Polish with ${ai.name}`}
                 </button>
               )}
+              <button
+                className="icon"
+                onClick={() => copyTranscript()}
+                title="Copy transcript as Markdown (for pasting into an AI chat)"
+                aria-label="Copy transcript"
+              >
+                {copied === "transcript" ? (
+                  <Check size={15} aria-hidden="true" />
+                ) : (
+                  <Copy size={15} aria-hidden="true" />
+                )}
+              </button>
+              <button
+                className="icon"
+                onClick={() => saveTranscript()}
+                title="Download transcript as a Markdown file"
+                aria-label="Download transcript"
+              >
+                {copied === "saved" ? (
+                  <Check size={15} aria-hidden="true" />
+                ) : (
+                  <Download size={15} aria-hidden="true" />
+                )}
+              </button>
               {showTx && (
                 <label className="follow-toggle" title="Keep the part being played in view">
                   <input
