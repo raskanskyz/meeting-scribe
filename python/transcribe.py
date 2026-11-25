@@ -22,6 +22,7 @@ import os
 import re
 import sys
 import threading
+from datetime import datetime
 from pathlib import Path
 
 # speaker embeddings only (voiceprints); diarization itself is Nemotron 3
@@ -89,6 +90,53 @@ def cmd_download(repo: str, dest: str):
 def fmt_ts(sec: float) -> str:
     s = int(sec)
     return f"{s // 3600:02d}:{s % 3600 // 60:02d}:{s % 60:02d}"
+
+
+def fmt_date(iso: str):
+    """YYYY-MM-DD HH:MM local time, matching fmtDate in src/main/transcript.ts"""
+    try:
+        d = datetime.fromisoformat(iso.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    return d.astimezone().strftime("%Y-%m-%d %H:%M")
+
+
+def transcript_md(meta: dict, fallback_title: str, segs: list) -> str:
+    """Same format as buildTranscriptMd in src/main/transcript.ts (no summary).
+    The app rewrites transcript.md after renames and polish, so the two must match."""
+    speakers = list(dict.fromkeys(seg["speaker"] for seg in segs))
+    single = len(speakers) <= 1
+    lines = [f"# {meta.get('title') or fallback_title or 'Meeting'}", ""]
+    date = fmt_date(meta["createdAt"]) if meta.get("createdAt") else None
+    if date:
+        lines.append(f"- **Date:** {date}")
+    if (meta.get("durationSec") or 0) > 0:
+        lines.append(f"- **Duration:** {fmt_ts(meta['durationSec'])}")
+    if speakers:
+        lines.append(f"- **Speakers:** {', '.join(speakers)}")
+    if meta.get("invitees"):
+        lines.append(f"- **Invited:** {', '.join(meta['invitees'])}")
+    lines += [
+        "",
+        "_Speaker labels are automatic and may be wrong. Timestamps are from the start of the recording._",
+        "",
+        "## Transcript",
+        "",
+    ]
+    turns = []  # consecutive segments from one speaker merge into one turn
+    for seg in segs:
+        text = seg["text"].strip()
+        if not text:
+            continue
+        if turns and turns[-1]["speaker"] == seg["speaker"]:
+            turns[-1]["text"] += " " + text
+        else:
+            turns.append({"speaker": seg["speaker"], "start": seg["start"], "text": text})
+    for t in turns:
+        who = "" if single else f"**{t['speaker']}** "
+        lines += [f"{who}[{fmt_ts(t['start'])}] {t['text']}", ""]
+    out = re.sub(r"\n{3,}", "\n\n", "\n".join(lines))
+    return out.rstrip() + "\n"
 
 
 def transcribe_track(model, path: Path, language: str, track: str):
@@ -800,13 +848,9 @@ def finalize(rec_dir: str, by_track, tracks, diarize_cache, voiceprints_path,
     if meta:
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    lines = [f"# {meta.get('title', Path(rec_dir).name)}", ""]
-    single = len({seg["speaker"] for seg in labeled}) <= 1
-    for seg in labeled:
-        prefix = "" if single else f"**{seg['speaker']}** "
-        lines.append(f"- {prefix}`[{fmt_ts(seg['start'])}]` {seg['text']}")
-
-    (Path(rec_dir) / "transcript.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (Path(rec_dir) / "transcript.md").write_text(
+        transcript_md(meta, Path(rec_dir).name, labeled), encoding="utf-8"
+    )
     (Path(rec_dir) / "transcript.json").write_text(
         json.dumps(labeled, ensure_ascii=False, indent=1), encoding="utf-8"
     )

@@ -1,5 +1,4 @@
 import { downloadError } from "../shared/downloadError";
-import { safeFileName } from "../shared/transcriptExport";
 import {
   app,
   clipboard,
@@ -187,7 +186,7 @@ async function lintAndSave(
       );
       await fsp.writeFile(
         path.join(dir, "transcript.md"),
-        buildTranscriptMd(meta.title, segments),
+        buildTranscriptMd(meta, segments),
       );
     }
     // mark polished even with zero corrections, so the badge means "swept", not "edited"
@@ -555,23 +554,6 @@ export function registerIpc(win: BrowserWindow): void {
     clipboard.writeText(text);
   });
 
-  // native save sheet; resolves to the chosen path, or null if cancelled
-  ipcMain.handle(
-    "transcript:save",
-    async (_e, name: string, text: string): Promise<string | null> => {
-      const res = await dialog.showSaveDialog(win, {
-        defaultPath: path.join(
-          app.getPath("documents"),
-          `${safeFileName(name)}.md`,
-        ),
-        filters: [{ name: "Markdown", extensions: ["md"] }],
-      });
-      if (res.canceled || !res.filePath) return null;
-      await fsp.writeFile(res.filePath, text, "utf8");
-      return res.filePath;
-    },
-  );
-
   // volume keys can't control the multi-output aggregate while recording, so
   // the deck exposes a slider that reaches the physical speakers underneath
   ipcMain.handle("volume:get", () => getOutputVolume());
@@ -934,7 +916,7 @@ export function registerIpc(win: BrowserWindow): void {
     if (segs)
       await fsp.writeFile(
         path.join(dir, "transcript.md"),
-        buildTranscriptMd(title, segs),
+        buildTranscriptMd(meta, segs),
       );
     return meta;
   });
@@ -1030,7 +1012,7 @@ export function registerIpc(win: BrowserWindow): void {
         if (meta) {
           await fsp.writeFile(
             path.join(dir, "transcript.md"),
-            buildTranscriptMd(meta.title, segs),
+            buildTranscriptMd(meta, segs),
           );
           const order: string[] = [];
           for (const seg of segs)
@@ -1054,6 +1036,21 @@ export function registerIpc(win: BrowserWindow): void {
       return null;
     }
   });
+
+  // transcript.md's format plus the summary, for pasting into an AI chat
+  ipcMain.handle(
+    "transcript:markdown",
+    async (_e, id: string): Promise<string | null> => {
+      const dir = path.join(loadSettings().recordingsDir, id);
+      const [meta, segs, summary] = await Promise.all([
+        readJson<RecordingMeta>(path.join(dir, "meta.json")),
+        readJson<TranscriptSegment[]>(path.join(dir, "transcript.json")),
+        readJson<MeetingSummary>(path.join(dir, "summary.json")),
+      ]);
+      if (!meta || !segs) return null;
+      return buildTranscriptMd(meta, segs, summary);
+    },
+  );
 
   ipcMain.handle(
     "transcript:segments",

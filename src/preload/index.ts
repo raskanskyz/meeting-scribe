@@ -46,9 +46,9 @@ const api = {
   setVolume: (v: number): Promise<void> => ipcRenderer.invoke("volume:set", v),
   copyText: (text: string): Promise<void> =>
     ipcRenderer.invoke("clipboard:write", text),
-  /** native save sheet; resolves to the saved path or null if cancelled */
-  saveTranscriptFile: (name: string, text: string): Promise<string | null> =>
-    ipcRenderer.invoke("transcript:save", name, text),
+  /** transcript.md's format plus the summary, or null if not transcribed */
+  transcriptMarkdown: (id: string): Promise<string | null> =>
+    ipcRenderer.invoke("transcript:markdown", id),
   audioStatus: (): Promise<AudioSetupStatus> =>
     ipcRenderer.invoke("audio:status"),
   audioEnsure: (rebuild?: boolean): Promise<AudioSetupStatus> =>

@@ -4,10 +4,9 @@ import {
   useRef,
   useState,
 } from "react";
-import { Check, ChevronLeft, Copy, Download, Pencil } from "lucide-react";
+import { Check, ChevronLeft, Copy, Pencil } from "lucide-react";
 import { api } from "../api";
 import { summaryClipboardSections } from "../summaryClipboard";
-import { buildTranscriptExport } from "../../../shared/transcriptExport";
 import { SPEAKER_COLORS } from "../speakerColors";
 import { fmtDur, fmtTs, phaseLabel } from "../fmt";
 import MeetingPlayer, { type PlayerHandle } from "../components/MeetingPlayer";
@@ -154,34 +153,17 @@ export default function MeetingDetailsView({
   };
   const seek = (sec: number) => playerRef.current?.seek(sec);
 
-  // Markdown export for pasting into an AI chat: header, summary if one
-  // exists, then the speaker-merged transcript
-  const transcriptMd = () =>
-    buildTranscriptExport({
-      title: rec.title,
-      createdAt: rec.createdAt,
-      durationSec: rec.durationSec,
-      segments: segs ?? [],
-      invitees: rec.invitees,
-      summary,
-    });
-  const flashCopied = (key: string) => {
-    setCopied(key);
-    setTimeout(() => setCopied((c) => (c === key ? null : c)), 1500);
-  };
-  const copyTranscript = () =>
-    api.copyText(transcriptMd()).then(() => flashCopied("transcript"));
-  const saveTranscript = () =>
-    api
-      .saveTranscriptFile(rec.title || "Meeting", transcriptMd())
-      .then((p) => p && flashCopied("saved"));
-
   const copySection = (key: string, text: string) => {
     api.copyText(text).then(() => {
       setCopied(key);
       setTimeout(() => setCopied((c) => (c === key ? null : c)), 1500);
     });
   };
+  // same format as transcript.md, plus the summary, for pasting into an AI chat
+  const copyTranscript = () =>
+    api
+      .transcriptMarkdown(rec.id)
+      .then((md) => md && copySection("transcript", md));
 
   // One source of truth for copied summary sections. Each section
   // title travels with the text, and Copy all is the same list joined up
@@ -488,18 +470,6 @@ export default function MeetingDetailsView({
                   <Check size={15} aria-hidden="true" />
                 ) : (
                   <Copy size={15} aria-hidden="true" />
-                )}
-              </button>
-              <button
-                className="icon"
-                onClick={() => saveTranscript()}
-                title="Download transcript as a Markdown file"
-                aria-label="Download transcript"
-              >
-                {copied === "saved" ? (
-                  <Check size={15} aria-hidden="true" />
-                ) : (
-                  <Download size={15} aria-hidden="true" />
                 )}
               </button>
               {showTx && (

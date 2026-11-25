@@ -1,10 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  buildTranscriptExport,
-  safeFileName,
-  speakerTurns,
-} from "./transcriptExport.ts";
+import { buildTranscriptMd, fmtDate, speakerTurns } from "./transcript.ts";
 
 const seg = (speaker, start, text) => ({ speaker, start, end: start + 1, text });
 
@@ -24,12 +20,10 @@ test("consecutive segments from one speaker merge into a single turn", () => {
 });
 
 test("multi-speaker transcript labels turns and uses HH:MM:SS", () => {
-  const md = buildTranscriptExport({
-    title: "Roadmap",
-    createdAt: "2026-11-20T10:00:00Z",
-    durationSec: 3725,
-    segments: [seg("Alice", 0, "Hi."), seg("Bob", 3723, "Bye.")],
-  });
+  const md = buildTranscriptMd(
+    { title: "Roadmap", createdAt: "2026-11-20T10:00:00Z", durationSec: 3725 },
+    [seg("Alice", 0, "Hi."), seg("Bob", 3723, "Bye.")],
+  );
   assert.match(md, /^# Roadmap/);
   assert.match(md, /\*\*Duration:\*\* 01:02:05/);
   assert.match(md, /\*\*Speakers:\*\* Alice, Bob/);
@@ -39,24 +33,24 @@ test("multi-speaker transcript labels turns and uses HH:MM:SS", () => {
 });
 
 test("single speaker omits the speaker prefix", () => {
-  const md = buildTranscriptExport({
-    title: "Solo",
-    createdAt: "2026-11-20T10:00:00Z",
-    durationSec: 30,
-    segments: [seg("Speaker 1", 4, "Note to self.")],
-  });
+  const md = buildTranscriptMd({ title: "Solo" }, [
+    seg("Speaker 1", 4, "Note to self."),
+  ]);
   assert.match(md, /\[00:00:04\] Note to self\./);
   assert.doesNotMatch(md, /\*\*Speaker 1\*\*/);
 });
 
-test("summary is included before the transcript when present", () => {
-  const md = buildTranscriptExport({
-    title: "Sync",
-    createdAt: "2026-11-20T10:00:00Z",
-    durationSec: 60,
-    invitees: ["Carol"],
-    segments: [seg("Alice", 0, "Ship it.")],
-    summary: {
+test("header-only title still produces a valid file", () => {
+  const md = buildTranscriptMd({ title: "" }, []);
+  assert.match(md, /^# Meeting\n/);
+  assert.match(md, /## Transcript\n$/);
+});
+
+test("summary is included before the transcript when passed", () => {
+  const md = buildTranscriptMd(
+    { title: "Sync", invitees: ["Carol"] },
+    [seg("Alice", 0, "Ship it.")],
+    {
       executiveSummary: "Agreed to ship Friday.",
       actionItems: [{ owner: "Alice", text: "Cut the release" }],
       keyDecisions: ["Ship Friday"],
@@ -64,7 +58,7 @@ test("summary is included before the transcript when present", () => {
       model: "m",
       generatedAt: "2026-11-20T11:00:00Z",
     },
-  });
+  );
   assert.match(md, /\*\*Invited:\*\* Carol/);
   const summaryAt = md.indexOf("## Summary");
   const transcriptAt = md.indexOf("## Transcript");
@@ -74,7 +68,7 @@ test("summary is included before the transcript when present", () => {
   assert.doesNotMatch(md, /### Open questions/);
 });
 
-test("file names drop characters that are invalid on disk", () => {
-  assert.equal(safeFileName("Q3: plan/review?"), "Q3 plan review");
-  assert.equal(safeFileName("   "), "Meeting");
+test("date is fixed-format local time, invalid dates are skipped", () => {
+  assert.match(fmtDate("2026-11-20T10:05:00Z"), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
+  assert.equal(fmtDate("not a date"), null);
 });
