@@ -319,6 +319,27 @@ export default function SettingsView({ settings, onChange }: Props) {
 
       <div className="card">
         <div className="field">
+          <label>Live transcription</label>
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={settings.liveTranscription}
+              onChange={(e) => save({ liveTranscription: e.target.checked })}
+            />{" "}
+            Show a live transcript while recording
+          </label>
+          <p className="hint" style={{ marginTop: 8 }}>
+            Live transcription keeps the GPU busy for the whole meeting, which
+            can make the Mac hot and the fans loud. Turn it off to only record
+            during the meeting; the full transcript is made right after you
+            stop. The final transcript is the same either way - it is always
+            re-made from the full recording.
+          </p>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="field">
           <label>Disk space</label>
           <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <input

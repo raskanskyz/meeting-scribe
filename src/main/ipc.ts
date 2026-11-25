@@ -74,6 +74,7 @@ const DEFAULT_SETTINGS: Settings = {
   autoSummarize: true,
   offlineMode: false,
   screenContext: false,
+  liveTranscription: true,
   deleteAudioWhenDone: false,
   onboardedAt: "",
   hideFromCapture: true,
@@ -295,6 +296,8 @@ async function closeStreams(id: string): Promise<void> {
 
 /** live MLX transcription sessions, keyed by recording id */
 const liveSessions = new Map<string, StreamSession>();
+/** sessions recorded with live transcription turned off - transcribed on stop */
+const recordOnlySessions = new Set<string>();
 
 let restoreOutput: (() => Promise<void>) | null = null;
 
@@ -743,10 +746,15 @@ export function registerIpc(win: BrowserWindow): void {
     closedSessions.delete(id);
     await fsp.mkdir(path.join(s.recordingsDir, id), { recursive: true });
 
-    // start live transcription when the active model runs on the GPU and is present
+    // start live transcription when enabled and the active model runs on the
+    // GPU and is present; off = record only, transcribe after the meeting
     let live = false;
     const model = modelFor(s, s.language);
-    if (modelEngine(model) === "mlx" && isDownloaded(model)) {
+    if (
+      s.liveTranscription &&
+      modelEngine(model) === "mlx" &&
+      isDownloaded(model)
+    ) {
       const session = new StreamSession(
         modelDirFor(model),
         s.language,
@@ -756,6 +764,8 @@ export function registerIpc(win: BrowserWindow): void {
       );
       liveSessions.set(id, session);
       live = true;
+    } else if (!s.liveTranscription) {
+      recordOnlySessions.add(id);
     }
 
     markRecording(true);
@@ -777,6 +787,7 @@ export function registerIpc(win: BrowserWindow): void {
       session.kill();
       liveSessions.delete(id);
     }
+    recordOnlySessions.delete(id);
     markRecording(false);
     await restoreOutputDevice();
     await closeStreams(id);
@@ -832,6 +843,10 @@ export function registerIpc(win: BrowserWindow): void {
           path.join(recDir, "live.json"),
           JSON.stringify(segments, null, 1),
         );
+        void runTranscription(id);
+      } else if (recordOnlySessions.delete(id)) {
+        // live was turned off to keep the machine idle during the meeting -
+        // do the full transcription now that it's over
         void runTranscription(id);
       }
       return full;

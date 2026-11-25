@@ -49,7 +49,9 @@ On macOS 14.2+ (the default path) the app taps system audio directly - no audio 
   sound mixed in, playable from the meeting page.
 - **Live transcription** - while recording, an MLX (Apple GPU) sidecar streams
   a rolling transcript to the UI. Hebrew uses the ivrit.ai large-v3-turbo
-  fine-tune; English uses vanilla Whisper large-v3-turbo.
+  fine-tune; English uses vanilla Whisper large-v3-turbo. If it makes your Mac
+  hot or loud, turn it off in Settings → Live transcription: the meeting is
+  then only recorded, and transcribed as soon as you stop.
 - **Batch transcription** - after the meeting the full tracks are re-transcribed
   with whole-file context (faster-whisper on CPU or mlx-whisper on GPU), which
   beats the live path's chunked output. Hallucination gating filters

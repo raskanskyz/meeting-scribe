@@ -32,6 +32,9 @@ export interface Settings {
   /** opt-in: polish and summaries also get screenshots from screen.webm (and the
    *  text read from them on-device). Sent to the AI provider when on; never in offline mode */
   screenContext: boolean;
+  /** transcribe on the GPU while recording. Off = only record during the
+   *  meeting (cool and quiet) and transcribe the full tracks once it stops */
+  liveTranscription: boolean;
   /** delete the raw track audio once transcript (+ polish/summary, when those
    *  are enabled) is on disk - reclaims space, makes re-transcribing impossible */
   deleteAudioWhenDone: boolean;
