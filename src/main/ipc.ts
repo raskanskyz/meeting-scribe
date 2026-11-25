@@ -17,7 +17,6 @@ import fsp from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { diarizeSidecar, runSidecar } from "./sidecar";
-import { StreamSession } from "./stream";
 import { fetchUpcoming } from "./calendar";
 import {
   ensureMultiOutput,
@@ -45,7 +44,6 @@ import { DIARIZE_MODEL, modelEngine } from "../shared/types";
 import type {
   FileTrack,
   LintResult,
-  LiveSegment,
   MeetingSummary,
   ProviderTestResult,
   RecordingMeta,
@@ -293,9 +291,6 @@ async function closeStreams(id: string): Promise<void> {
   }
 }
 
-/** live MLX transcription sessions, keyed by recording id */
-const liveSessions = new Map<string, StreamSession>();
-
 let restoreOutput: (() => Promise<void>) | null = null;
 
 export async function restoreOutputDevice(): Promise<void> {
@@ -324,8 +319,8 @@ export function registerIpc(win: BrowserWindow): void {
       win.setTitle(rec ? "● Recording - Meeting Scribe" : "Meeting Scribe");
   };
 
-  // best-effort AI polish + summary, shared by batch transcribe and live
-  // finalize; a provider failure must never fail the transcription itself
+  // best-effort AI polish + summary after batch transcription; a provider
+  // failure must never fail the transcription itself
   async function aiPost(id: string, recDir: string): Promise<void> {
     const after = loadSettings();
     if (!after.offlineMode && "llm" in (await activeLlm(after))) {
@@ -743,40 +738,12 @@ export function registerIpc(win: BrowserWindow): void {
     closedSessions.delete(id);
     await fsp.mkdir(path.join(s.recordingsDir, id), { recursive: true });
 
-    // start live transcription when the active model runs on the GPU and is present
-    let live = false;
-    const model = modelFor(s, s.language);
-    if (modelEngine(model) === "mlx" && isDownloaded(model)) {
-      const session = new StreamSession(
-        modelDirFor(model),
-        s.language,
-        (seg) => send("live:segment", { recordingId: id, ...seg }),
-        (message) => send("live:error", { recordingId: id, message }),
-        sidecarEnv(s),
-      );
-      liveSessions.set(id, session);
-      live = true;
-    }
-
     markRecording(true);
-    return { id, live, mode };
+    return { id, mode };
   });
-
-  // one-way PCM feed for the live transcription sidecar (16 kHz mono int16 LE)
-  ipcMain.on(
-    "rec:feedPcm",
-    (_e, id: string, track: TrackName, data: ArrayBuffer) => {
-      liveSessions.get(id)?.feed(track, data);
-    },
-  );
 
   // recorder failed to start after rec:begin - clean up the empty session
   ipcMain.handle("rec:abort", async (_e, id: string) => {
-    const session = liveSessions.get(id);
-    if (session) {
-      session.kill();
-      liveSessions.delete(id);
-    }
     markRecording(false);
     await restoreOutputDevice();
     await closeStreams(id);
@@ -820,20 +787,7 @@ export function registerIpc(win: BrowserWindow): void {
       await restoreOutputDevice();
       markRecording(false);
 
-      // live recording: drain the streaming sidecar and keep its segments as a
-      // preview record, then re-transcribe the full tracks in batch - whole-file
-      // context beats the live path's 15s VAD chunks, so the stored transcript
-      // never inherits live-only artifacts
-      const session = liveSessions.get(id);
-      if (session) {
-        liveSessions.delete(id);
-        const segments: LiveSegment[] = await session.end();
-        await fsp.writeFile(
-          path.join(recDir, "live.json"),
-          JSON.stringify(segments, null, 1),
-        );
-        void runTranscription(id);
-      }
+      void runTranscription(id);
       return full;
     },
   );

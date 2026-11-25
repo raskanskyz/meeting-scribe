@@ -229,14 +229,6 @@ export interface ModelInfo {
   engine?: Engine;
 }
 
-export interface LiveSegment {
-  track: TrackName;
-  speaker: string;
-  start: number;
-  end: number;
-  text: string;
-}
-
 export interface TranscribeProgress {
   recordingId: string;
   phase:
@@ -268,17 +260,17 @@ export const DIARIZE_MODEL = "FluidInference/nemotron-3-diarization-coreml";
 export const CURATED_MODELS: ModelInfo[] = [
   {
     repo: "mlx-community/ivrit-ai-whisper-large-v3-turbo-mlx",
-    label: "ivrit.ai large-v3-turbo (live)",
-    detail: "Hebrew fine-tune, Apple GPU - live transcription while recording",
+    label: "ivrit.ai large-v3-turbo (Apple GPU)",
+    detail: "Hebrew fine-tune, Apple GPU - transcribe after the meeting",
     sizeGb: 1.5,
     engine: "mlx",
     recommended: true,
   },
   {
     repo: "mlx-community/whisper-large-v3-turbo",
-    label: "Whisper large-v3-turbo (live, English)",
+    label: "Whisper large-v3-turbo (Apple GPU, English)",
     detail:
-      "Vanilla multilingual, Apple GPU - live transcription for English meetings",
+      "Vanilla multilingual, Apple GPU - transcribe English meetings after recording",
     sizeGb: 1.6,
     engine: "mlx",
   },
@@ -308,7 +300,7 @@ export const CURATED_MODELS: ModelInfo[] = [
   },
 ];
 
-/** Engine a model runs on. MLX models (Apple GPU, live) end in `-mlx`; all
+/** Engine a model runs on. MLX models (Apple GPU) end in `-mlx`; all
  *  others are faster-whisper (CPU, batch). Falls back to the curated entry. */
 export function modelEngine(repo: string): Engine {
   const known = CURATED_MODELS.find((m) => m.repo === repo);

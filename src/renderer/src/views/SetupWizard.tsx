@@ -211,13 +211,13 @@ export default function SetupWizard({ settings, onChange }: Props) {
             <div className="wiz-choices">
               <ChoiceCard
                 title="Hebrew (עברית)"
-                detail="ivrit.ai fine-tune - the best Hebrew model there is, live transcription on the Apple GPU"
+                detail="ivrit.ai fine-tune - the best Hebrew model there is, transcription on the Apple GPU"
                 active={settings.language === 'he'}
                 onPick={() => pickLanguage('he', HEBREW_MODEL)}
               />
               <ChoiceCard
                 title="English"
-                detail="Whisper large-v3-turbo - live transcription on the Apple GPU"
+                detail="Whisper large-v3-turbo - transcription on the Apple GPU"
                 active={settings.language === 'en'}
                 onPick={() => pickLanguage('en', ENGLISH_MODEL)}
               />

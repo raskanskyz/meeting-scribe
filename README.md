@@ -12,8 +12,6 @@ The screenshots below use made-up demo data.
 
 ![Meeting details: speaker timeline and AI summary](docs/screenshots/meeting.png)
 
-![Models: choose and download transcription models](docs/screenshots/models.png)
-
 ![Settings: audio capture, folders and speaker identification](docs/screenshots/settings.png)
 
 ![First-run setup wizard](docs/screenshots/setup-wizard.png)
@@ -47,13 +45,10 @@ On macOS 14.2+ (the default path) the app taps system audio directly - no audio 
 - **Screen recording** - on by default; capture the full screen or a specific
   window (browser, Slack, Zoom…), saved as `screen.webm` with the meeting's
   sound mixed in, playable from the meeting page.
-- **Live transcription** - while recording, an MLX (Apple GPU) sidecar streams
-  a rolling transcript to the UI. Hebrew uses the ivrit.ai large-v3-turbo
-  fine-tune; English uses vanilla Whisper large-v3-turbo.
-- **Batch transcription** - after the meeting the full tracks are re-transcribed
-  with whole-file context (faster-whisper on CPU or mlx-whisper on GPU), which
-  beats the live path's chunked output. Hallucination gating filters
-  silence-decoded filler.
+- **Batch transcription** - as soon as recording stops, the full tracks are
+  transcribed with whole-file context (faster-whisper on CPU or mlx-whisper on
+  GPU). Hallucination gating filters silence-decoded filler. During the meeting,
+  the app only records; transcription does not use the GPU until you stop.
 - **Speaker identification** - NVIDIA Nemotron 3 Diarization (CoreML, via a
   FluidAudio Swift sidecar) splits the meeting track into up to 8 speakers;
   a voiceprint registry (pyannote embeddings) auto-names people it has heard
@@ -88,8 +83,8 @@ On macOS 14.2+ (the default path) the app taps system audio directly - no audio 
 ## Requirements
 
 - Apple Silicon Mac, macOS 14.2+ (14+ is the floor for speaker identification, 14.2+ for
-  driver-free meeting audio; MLX live transcription is GPU-only; batch
-  faster-whisper works on CPU)
+  driver-free meeting audio; mlx-whisper transcription runs on the GPU,
+  faster-whisper on CPU)
 - Xcode Command Line Tools (`xcode-select --install`) and [Homebrew](https://brew.sh) - setup.sh checks and tells you if they're missing
 - For speaker identification: a free Hugging Face account (the wizard links you through it)
 - For summaries: [Claude Code](https://claude.com/claude-code) or [Codex](https://developers.openai.com/codex/cli) CLI, signed in
@@ -120,7 +115,6 @@ renderer (React)                    main (Electron)              sidecars
 ────────────────                    ───────────────              ────────
 getUserMedia mic + system tap ──►   rec:append ──► <track>.webm
 getUserMedia screen (desktop) ──►   rec:append ──► screen.webm
-16 kHz PCM tap (live)         ──►   rec:feedPcm ─────────────►   python/stream.py   (MLX + Silero VAD)
                                     rec:finish  ─────────────►   python/transcribe.py (whisper + swift/diarize-sidecar)
                                                 └────────────►   claude / codex exec … (polish + summary)
                                     calendar:upcoming ────────►  swift/calendar-sidecar  (EventKit)
@@ -137,7 +131,6 @@ Each recording is a folder in the recordings directory (Settings → Storage):
   mic.webm            # you
   system.webm         # them (system-audio tap)
   screen.webm         # optional screen video (with mixed audio)
-  live.json           # live-transcription preview segments
   transcript.json/.md # final transcript (post-diarization, post-polish)
   transcript.raw.json # untouched ASR output, kept before the first polish
   speakers.json       # diarization clusters + voiceprint matches

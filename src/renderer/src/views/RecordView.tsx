@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import { api } from "../api";
 import Waveform from "../components/Waveform";
-import LivePrompter from "../components/LivePrompter";
 import { CHANNEL_COLORS } from "../speakerColors";
 import { fmtClock, langName } from "../fmt";
 import type { useRecorder } from "../hooks/useRecorder";
@@ -98,7 +97,6 @@ export default function RecordView({
   const {
     status,
     elapsed,
-    live,
     captureMode,
     systemError,
     screenWarning,
@@ -403,7 +401,7 @@ export default function RecordView({
           />
           <select
             className="lang-select"
-            title="Language of this meeting - sets the live transcription model"
+            title="Language of this meeting - sets the transcription model"
             value={settings.language}
             disabled={recording}
             onChange={async (e) =>
@@ -573,7 +571,6 @@ export default function RecordView({
         </div>
       </div>
 
-      <LivePrompter active={recording && live} />
 
       {picker && (
         <div className="modal-overlay" onClick={() => setPicker(null)}>

@@ -702,9 +702,6 @@ def finalize(rec_dir: str, by_track, tracks, diarize_cache, voiceprints_path,
              match_threshold, diar_job=None, asr=None):
     """Diarize, suppress bleed, name speakers and write the transcript files.
 
-    Shared by transcribe (ASR then finalize) and the live path (finalize the
-    segments already produced while recording).
-
     asr: {"engine": ..., "model": ...} recorded in meta.json so a stored
     transcript says what produced it - engine and model both changed over the
     life of this app and transcripts are otherwise indistinguishable."""
@@ -906,32 +903,6 @@ def asr_info(engine: str, model_dir: str) -> dict:
     return {"engine": engine, "model": Path(model_dir).name.replace("__", "/")}
 
 
-def cmd_finalize(rec_dir: str, segments_path: str, diarize_cache: str | None = None,
-                 voiceprints_path: str | None = None, match_threshold: float = MATCH_THRESHOLD,
-                 engine: str | None = None, model_dir: str | None = None):
-    """Finalize live-produced segments: no ASR, just diarize/label/write."""
-    tracks = open_tracks(rec_dir)
-    live = json.loads(Path(segments_path).read_text())
-    by_track = {t: [] for t in tracks}
-    for seg in live:
-        track = seg.get("track")
-        if track in by_track:
-            by_track[track].append(
-                {"start": seg["start"], "end": seg["end"], "text": seg["text"].strip()}
-            )
-    for segs in by_track.values():
-        segs.sort(key=lambda s: s["start"])
-
-    if diarize_cache and ready_marker(diarize_cache).exists():
-        os.environ.setdefault("HF_HUB_OFFLINE", "1")
-
-    asr = asr_info(engine, model_dir) if engine and model_dir else None
-    if asr:
-        asr["live"] = True
-    finalize(rec_dir, by_track, tracks, diarize_cache, voiceprints_path, match_threshold,
-             asr=asr)
-
-
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -949,23 +920,10 @@ def main():
     t.add_argument("--voiceprints", default=None)
     t.add_argument("--match-threshold", type=float, default=MATCH_THRESHOLD)
 
-    f = sub.add_parser("finalize")
-    f.add_argument("--dir", required=True)
-    f.add_argument("--segments", required=True)
-    f.add_argument("--diarize-cache", default=None)
-    f.add_argument("--voiceprints", default=None)
-    f.add_argument("--match-threshold", type=float, default=MATCH_THRESHOLD)
-    f.add_argument("--engine", default=None, choices=["faster-whisper", "mlx"])
-    f.add_argument("--model-dir", default=None)
-
     args = ap.parse_args()
     try:
         if args.cmd == "download":
             cmd_download(args.repo, args.dest)
-        elif args.cmd == "finalize":
-            cmd_finalize(args.dir, args.segments, args.diarize_cache,
-                         args.voiceprints, args.match_threshold,
-                         args.engine, args.model_dir)
         else:
             cmd_transcribe(args.dir, args.model_dir, args.language, args.engine,
                            args.diarize_cache, args.voiceprints, args.match_threshold)

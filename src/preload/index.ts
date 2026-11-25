@@ -9,7 +9,6 @@ import type {
   FileTrack,
   HfValidation,
   LintResult,
-  LiveSegment,
   MeetingSummary,
   RecordingMeta,
   ScreenSourcesResult,
@@ -17,14 +16,9 @@ import type {
   SpeakerInfo,
   SummaryResult,
   SystemCaptureMode,
-  TrackName,
   TranscribeProgress,
   TranscriptSegment,
 } from "../shared/types";
-
-export interface LiveEvent extends LiveSegment {
-  recordingId: string;
-}
 
 const api = {
   getSettings: (): Promise<Settings> => ipcRenderer.invoke("settings:get"),
@@ -78,24 +72,15 @@ const api = {
 
   recBegin: (): Promise<{
     id: string;
-    live: boolean;
     mode: SystemCaptureMode;
   }> => ipcRenderer.invoke("rec:begin"),
   recAppend: (id: string, track: FileTrack, data: ArrayBuffer): Promise<void> =>
     ipcRenderer.invoke("rec:append", id, track, data),
-  recFeedPcm: (id: string, track: TrackName, data: ArrayBuffer): void =>
-    ipcRenderer.send("rec:feedPcm", id, track, data),
   recFinish: (
     id: string,
     meta: Omit<RecordingMeta, "id" | "hasTranscript">,
   ): Promise<RecordingMeta> => ipcRenderer.invoke("rec:finish", id, meta),
   recAbort: (id: string): Promise<void> => ipcRenderer.invoke("rec:abort", id),
-  onLiveSegment: (cb: (e: LiveEvent) => void): (() => void) => {
-    const fn = (_e: unknown, p: LiveEvent) => cb(p);
-    ipcRenderer.on("live:segment", fn);
-    return () => ipcRenderer.removeListener("live:segment", fn);
-  },
-
   onMeetingReminder: (
     cb: (p: { title: string; invitees: string[]; start?: boolean }) => void,
   ): (() => void) => {

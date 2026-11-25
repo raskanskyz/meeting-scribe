@@ -8,11 +8,9 @@ interface Track {
   stream: MediaStream;
   recorder: MediaRecorder;
   analyser: AnalyserNode;
-  pcmTap?: ScriptProcessorNode;
 }
 
 const CHUNK_MS = 5000;
-const PCM_FRAME = 4096; // ~256 ms at 16 kHz - the live sidecar's feed granularity
 
 /** a clean digital tap: no browser voice processing on either capture route */
 const RAW_AUDIO = {
@@ -75,7 +73,6 @@ async function openTrack(
   source_: { deviceId: string } | { loopback: true },
   sessionId: string,
   name: TrackName,
-  live = false,
 ): Promise<Track> {
   const stream =
     "loopback" in source_
@@ -104,24 +101,7 @@ async function openTrack(
       await api.recAppend(sessionId, name, await e.data.arrayBuffer());
   };
 
-  // live path: tap raw PCM off the (16 kHz) graph and stream int16 to the sidecar
-  let pcmTap: ScriptProcessorNode | undefined;
-  if (live) {
-    pcmTap = ctx.createScriptProcessor(PCM_FRAME, 1, 1);
-    pcmTap.onaudioprocess = (e) => {
-      const f32 = e.inputBuffer.getChannelData(0);
-      const i16 = new Int16Array(f32.length);
-      for (let i = 0; i < f32.length; i++) {
-        const s = Math.max(-1, Math.min(1, f32[i]));
-        i16[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-      }
-      api.recFeedPcm(sessionId, name, i16.buffer);
-    };
-    source.connect(pcmTap);
-    pcmTap.connect(ctx.destination); // required for onaudioprocess to fire; output stays silent
-  }
-
-  return { stream, recorder, analyser, pcmTap };
+  return { stream, recorder, analyser };
 }
 
 // a recorder whose source track already ended is 'inactive'; stopping it throws
@@ -135,7 +115,6 @@ const stopRecorder = (r: MediaRecorder) =>
 export function useRecorder() {
   const [status, setStatus] = useState<RecStatus>("idle");
   const [elapsed, setElapsed] = useState(0);
-  const [live, setLive] = useState(false);
   // the route the in-flight recording is actually using, as decided by main
   const [captureMode, setCaptureMode] = useState<SystemCaptureMode | null>(
     null,
@@ -172,15 +151,13 @@ export function useRecorder() {
       systemId: string | null,
       screenSourceId: string | null = null,
     ) => {
-      const { id: sessionId, live: isLive, mode } = await api.recBegin();
+      const { id: sessionId, mode } = await api.recBegin();
       sessionRef.current = sessionId;
-      setLive(isLive);
       setCaptureMode(mode);
       setSystemError("");
       const tracks: Partial<Record<TrackName, Track>> = {};
       try {
-        // live transcription taps PCM off a 16 kHz graph (what the sidecar expects)
-        const ctx = new AudioContext(isLive ? { sampleRate: 16000 } : {});
+        const ctx = new AudioContext();
         ctxRef.current = ctx;
 
         tracks.mic = await openTrack(
@@ -188,7 +165,6 @@ export function useRecorder() {
           { deviceId: micId },
           sessionId,
           "mic",
-          isLive,
         );
         // loopback needs no device pick; BlackHole does
         const systemSource =
@@ -206,7 +182,6 @@ export function useRecorder() {
               systemSource,
               sessionId,
               "system",
-              isLive,
             );
           } catch (e) {
             setSystemError(e instanceof Error ? e.message : String(e));
@@ -214,13 +189,11 @@ export function useRecorder() {
         }
       } catch (e) {
         Object.values(tracks).forEach((t) => {
-          t!.pcmTap?.disconnect();
           t!.stream.getTracks().forEach((s) => s.stop());
         });
         await ctxRef.current?.close().catch(() => {});
         ctxRef.current = null;
         sessionRef.current = null;
-        setLive(false);
         setCaptureMode(null);
         await api.recAbort(sessionId);
         throw e;
@@ -250,8 +223,7 @@ export function useRecorder() {
               "Screen source ended (window closed?) - the rest of this meeting has no video.",
             );
           // the video gets the meeting sound too: mix both stems into one
-          // audio track on a full-rate context (the main graph may run at
-          // 16 kHz for live transcription - too lo-fi for playback)
+          // audio track on a separate context for the video recording
           let mixCtx: AudioContext | undefined;
           try {
             mixCtx = new AudioContext();
@@ -336,7 +308,6 @@ export function useRecorder() {
       await new Promise((r) => setTimeout(r, 300));
 
       Object.values(tracks).forEach((t) => {
-        t!.pcmTap?.disconnect();
         t!.stream.getTracks().forEach((s) => s.stop());
       });
       screenRef.current?.stream.getTracks().forEach((s) => s.stop());
@@ -355,7 +326,6 @@ export function useRecorder() {
       tracksRef.current = {};
       setAnalysers({});
       setElapsed(0);
-      setLive(false);
       setCaptureMode(null);
       setStatus("idle");
       return id;
@@ -374,19 +344,17 @@ export function useRecorder() {
       ].map(stopRecorder),
     );
     Object.values(tracks).forEach((t) => {
-      t!.pcmTap?.disconnect();
       t!.stream.getTracks().forEach((s) => s.stop());
     });
     screenRef.current?.stream.getTracks().forEach((s) => s.stop());
     void screenRef.current?.mixCtx?.close().catch(() => {});
     screenRef.current = null;
     await ctxRef.current?.close();
-    await api.recAbort(sessionRef.current!); // kills live session, restores output, deletes folder
+    await api.recAbort(sessionRef.current!); // restores output and deletes folder
     tracksRef.current = {};
     sessionRef.current = null;
     setAnalysers({});
     setElapsed(0);
-    setLive(false);
     setCaptureMode(null);
     setStatus("idle");
   }, []);
@@ -394,7 +362,6 @@ export function useRecorder() {
   return {
     status,
     elapsed,
-    live,
     captureMode,
     systemError,
     screenWarning,

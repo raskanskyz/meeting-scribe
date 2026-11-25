@@ -1787,25 +1787,6 @@ button.icon:hover {
   }
 }
 
-.live-prompter {
-  border: 1px solid #2c2f3a;
-}
-.live-lines {
-  max-height: 260px;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding-top: 8px;
-}
-.live-line {
-  line-height: 1.5;
-}
-.live-speaker {
-  font-weight: 600;
-  margin-inline-end: 8px;
-}
-
 /* ─── screen-source picker ────────────────────────────────── */
 
 .modal-overlay {

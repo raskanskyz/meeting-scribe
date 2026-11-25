@@ -263,8 +263,8 @@ export default function SettingsView({ settings, onChange }: Props) {
           </label>
           <p className="hint" style={{ marginTop: 8 }}>
             Disables AI polish and summaries, blocks model downloads, and
-            forces the transcription sidecars fully offline (recording, live
-            transcription and speaker identification all run from
+            forces the transcription sidecars fully offline (transcription
+            and speaker identification run from
             already-downloaded local models). Recordings and transcripts are still
             saved locally; recordings made while this is on get no polish or
             summary, and you can generate them by hand later. Also available
