@@ -311,7 +311,9 @@ export default function SettingsView({ settings, onChange }: Props) {
           </label>
           <p className="hint" style={{ marginTop: 8 }}>
             Applies to every capture path (Zoom, Meet, QuickTime, this app's own
-            screen recording). Note it also hides the app from your own
+            screen recording). While recording, the menu-bar icon and Dock
+            stay neutral too (no red REC) - use the app window or the tray menu
+            to check recording state. Note it also hides the app from your own
             screenshots - turn it off temporarily if you need one.
           </p>
         </div>

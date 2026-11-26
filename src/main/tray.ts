@@ -11,6 +11,10 @@ const REC_2X =
 
 let tray: Tray | null = null;
 let recording = false;
+// while the app is hidden from screen capture the menu bar must not give a
+// recording away either: the status item lives in the shared menu bar, so it
+// keeps the plain idle look and only the menu's Start/Stop item tells
+let discreet = false;
 
 export const isRecording = (): boolean => recording;
 
@@ -63,12 +67,24 @@ export function createTray(win: BrowserWindow): void {
   rebuildMenu(win);
 }
 
-export function setTrayRecording(win: BrowserWindow, rec: boolean): void {
-  if (recording === rec || !tray) return;
-  recording = rec;
+function applyTrayState(): void {
+  if (!tray) return;
+  const showRec = recording && !discreet;
   tray.setImage(
-    rec ? icon(REC_1X, REC_2X, false) : icon(IDLE_1X, IDLE_2X, true),
+    showRec ? icon(REC_1X, REC_2X, false) : icon(IDLE_1X, IDLE_2X, true),
   );
-  tray.setToolTip(rec ? "Meeting Scribe - recording" : "Meeting Scribe");
-  rebuildMenu(win);
+  tray.setToolTip(showRec ? "Meeting Scribe - recording" : "Meeting Scribe");
+}
+
+export function setTrayRecording(
+  win: BrowserWindow,
+  rec: boolean,
+  hidden: boolean,
+): void {
+  if (!tray || (recording === rec && discreet === hidden)) return;
+  const menuChanged = recording !== rec;
+  recording = rec;
+  discreet = hidden;
+  applyTrayState();
+  if (menuChanged) rebuildMenu(win);
 }

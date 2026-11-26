@@ -311,10 +311,18 @@ export function registerIpc(win: BrowserWindow): void {
     win.webContents.send(channel, payload);
   };
 
-  // recording state on the dock + window title, visible from any tab or app
+  // recording state on the dock + window title, visible from any tab or app.
+  // The dock and menu bar are outside the protected window, so while the app
+  // is hidden from capture they stay neutral - a red REC there would show up
+  // in a shared screen. The title is fine: it's drawn inside the window.
+  let recNow = false;
+  const showRecIndicators = (hidden: boolean) => {
+    setTrayRecording(win, recNow, hidden);
+    app.dock?.setBadge(recNow && !hidden ? "REC" : "");
+  };
   const markRecording = (rec: boolean) => {
-    setTrayRecording(win, rec);
-    app.dock?.setBadge(rec ? "REC" : "");
+    recNow = rec;
+    showRecIndicators(loadSettings().hideFromCapture !== false);
     if (!win.isDestroyed())
       win.setTitle(rec ? "● Recording - Meeting Scribe" : "Meeting Scribe");
   };
@@ -513,8 +521,10 @@ export function registerIpc(win: BrowserWindow): void {
   ipcMain.handle("settings:set", async (_e, patch: Partial<Settings>) => {
     const next = { ...loadSettings(), ...patch };
     await fsp.writeFile(settingsPath(), JSON.stringify(next, null, 2));
-    if ("hideFromCapture" in patch && !win.isDestroyed())
-      win.setContentProtection(!!next.hideFromCapture);
+    if ("hideFromCapture" in patch) {
+      if (!win.isDestroyed()) win.setContentProtection(!!next.hideFromCapture);
+      showRecIndicators(!!next.hideFromCapture);
+    }
     return next;
   });
 
